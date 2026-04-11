@@ -14,7 +14,7 @@
 ```
 book.txt
   ↓ chapters.py (M1: single-chapter wrapper; M2: heuristic + Gemini fallback)
-segments (60–180 chars, merged from sentences)
+segments (60–180 chars ASCII / 25–70 chars CJK, merged from sentences)
   ↓ gemini_client.py (compact LLM schema: say carries seg_id only)
 LLM timeline (schema: llm_timeline.schema.json)
   ↓ _expand_says in __main__.py (resolves seg_id → text + voice_clip)
@@ -40,7 +40,8 @@ pipeline/
   config.py               # env loading, path constants
   cache.py                # stub (M1); content-hash keyed cache (M2+)
   chapters.py             # single-chapter wrapper (M1); multi-chapter heuristics (M2)
-  segmenter.py            # sentence split + merge to 60–180 chars
+  segmenter.py            # sentence split + merge (CJK-aware: 25–70 / ASCII: 60–180)
+  asset_catalog.py        # curated bg/bgm/se ID pools for manifest validation
   bundle.py               # writes bundle/ directory tree
   llm/
     gemini_client.py      # thin google-genai wrapper, JSON mode, 3× retry
@@ -60,6 +61,13 @@ godot_player/
   scripts/
     BundleLoader.gd       # load bundle/ dir, parse JSON, resolve asset paths
     Main.gd               # parse --bundle arg, load chapter 0, advance on input
+
+tests/
+  test_segmenter.py       # CJK detection + segment sizing
+  test_expand_says.py     # say expansion + segment coverage
+  test_asset_validation.py # asset-ID manifest validation
+  test_golden.py          # golden-file expansion + asset scan
+  fixtures/               # ch01_llm.json, ch01_expected.json
 
 samples/
   short.txt               # ~500-word test chapter (narrator + 2 characters)
@@ -82,12 +90,17 @@ python -m pipeline build samples/multi_en.txt -o out/multi_en
 # Bypass the content-hash cache for a clean rebuild
 python -m pipeline build samples/multi_zh.txt -o out/multi_zh --no-cache
 
+# Run tests
+pytest tests/ -v
+
 # Validate a timeline
 python -m pipeline validate out/short/chapters/ch01.json
 
 # Play in Godot (4.6+)
-# Godot binary: C:\Users\wssrd\OneDrive\Desktop\Godot_v4.6.1-stable_win64.exe
-godot --path godot_player -- --bundle ../out/short
+# Godot binary (directory containing the .exe):
+#   C:\Users\wssrd\OneDrive\Desktop\Godot_v4.6.1-stable_win64.exe\
+# Launch from bash (use console exe for log output):
+"/c/Users/wssrd/OneDrive/Desktop/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe" --path "/c/Users/wssrd/Code/book-to-vn/godot_player" -- --bundle ../out/short
 ```
 
 ## Gemini Integration
@@ -100,7 +113,9 @@ godot --path godot_player -- --bundle ../out/short
 
 **Validation:** LLM output validated against `llm_timeline.schema.json` immediately after Gemini call. Runtime timeline (post-expansion) validated against `timeline.schema.json` before bundle write.
 
-**Error Handling:** Transient failures retry 3× with backoff. Validation failures raise loudly (retry loop deferred to M3).
+**Asset-ID Discipline:** `pipeline/asset_catalog.py` defines curated pools of bg/bgm/se IDs. The prompt injects these as an ASSET MANIFEST. Post-LLM validation checks all IDs against the catalog; unknown IDs trigger one retry before failing.
+
+**Error Handling:** Transient failures retry 3× with backoff. Schema validation failures raise loudly. Asset-ID validation retries once with feedback.
 
 ## Data Model
 
@@ -109,7 +124,7 @@ godot --path godot_player -- --bundle ../out/short
 @dataclass
 class Segment:
     seg_id: str  # e.g. "ch01_seg003"
-    text: str    # 60–180 chars, merged sentences
+    text: str    # 60–180 chars (ASCII) / 25–70 chars (CJK), merged sentences
 ```
 
 ### Timeline JSON (Runtime, in bundle)
@@ -127,7 +142,7 @@ class Segment:
 }
 ```
 
-Slots: `left`, `middle`, `right` (fixed enum). Expressions free-form in M1; enum in M3.
+Slots: `left`, `middle`, `right` (fixed enum). Expressions: `neutral`, `smile`, `sad`, `angry`, `surprised`, `worried`, `thinking` (fixed enum, M3).
 
 ### Bundle on Disk
 ```
@@ -142,22 +157,20 @@ bundle/
   voice/ch01_seg*.ogg        # silent OGGs, length ∝ text length
 ```
 
-## Known Limitations (post-M2)
+## Known Limitations (post-M3)
 
-- **Chapter splitter scale limit:** Heuristics handle well-formatted books cleanly. The Gemini fallback embeds the entire text as numbered lines in the prompt, so inputs beyond ~30k characters may exceed context comfortably. Windowed splitting is a stub — revisit in M3.
-- **Segmenter sized for ASCII:** `_MIN_LEN=60 / _MAX_LEN=180` was tuned for English. CJK characters carry 2–3× the information per char, so Chinese segments are effectively 2–3× too long. This hurts TTS pacing once M5 lands. Language-aware sizing deferred.
-- **Cast display names are raw IDs:** `cast.json` uses the Gemini-generated speaker ID as `display_name` on first sight. For Chinese input this is usually fine (IDs are Chinese characters); for pinyin'd IDs it looks rough. M3 can add a dedicated name field.
+- **Chapter splitter scale limit:** Heuristics handle well-formatted books cleanly. The Gemini fallback embeds the entire text as numbered lines in the prompt, so inputs beyond ~30k characters may exceed context comfortably. Windowed splitting is a stub — revisit in M4+.
+- **Cast display names are raw IDs:** `cast.json` uses the Gemini-generated speaker ID as `display_name` on first sight. For Chinese input this is usually fine (IDs are Chinese characters); for pinyin'd IDs it looks rough. Future milestone can add a dedicated name field.
 - **Placeholder-only assets:** All backgrounds are solid colors with ID labels. All characters are silhouettes. Silent TTS stubs. Real image gen (M4) and real TTS (M5) behind adapter interfaces.
-- **No validation of asset IDs against manifest:** Gemini can reference any ID; we generate placeholders for whatever it uses. M3 adds a pre-declared asset manifest and validator rejects unknown IDs with retry.
-- **No expression enum:** Expressions are free-form strings. M3 locks an enum (neutral, smile, sad, angry, surprised, ...).
-- **No inline effects:** `say` commands don't support word-level styling (bold, color, shake). M3+ adds optional `fx` array with word-offset spans.
+- **Static asset catalog:** `asset_catalog.py` has a fixed set of bg/bgm/se IDs. Future milestones can make this context-dependent (genre, setting).
+- **No inline effects:** `say` commands don't support word-level styling (bold, color, shake). Future milestone adds optional `fx` array with word-offset spans.
 
 ## Milestones
 
 - **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
 - **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache at `~/.book-to-vn/cache` (override with `BOOK_TO_VN_CACHE_DIR`). Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
-- **M3 (next):** Prompt quality & coherence. Asset-ID discipline. Expression enum. Golden-file tests. CJK-aware segmenter sizing.
-- **M4:** Real image gen (Imagen or local SD). Per-character reference pinning.
+- **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (27 tests via pytest).
+- **M4 (next):** Real image gen (Imagen or local SD). Per-character reference pinning.
 - **M5:** Real TTS. Per-character voice assignment.
 - **M6:** BGM/SE library. Mood-based selection.
 - **M7:** Polish. Save/load, backlog, text speed, skip read. Standalone export.

@@ -3,7 +3,7 @@ import time
 
 from jsonschema import Draft202012Validator
 
-from pipeline import config
+from pipeline import asset_catalog, config
 from pipeline.chapters import Chapter
 from pipeline.segmenter import Segment
 
@@ -29,6 +29,9 @@ def _render_timeline_prompt(
         .replace("{SEGMENTS}", seg_lines)
         .replace("{CHAPTER_BODY}", chapter_body)
         .replace("{KNOWN_CAST}", known_cast_text)
+        .replace("{BG_MANIFEST}", ", ".join(asset_catalog.BG_IDS))
+        .replace("{BGM_MANIFEST}", ", ".join(asset_catalog.BGM_IDS))
+        .replace("{SE_MANIFEST}", ", ".join(asset_catalog.SE_IDS))
     )
 
 
@@ -65,11 +68,12 @@ def generate_timeline(
     chapter_body: str,
     segments: list[Segment],
     known_cast_text: str = "None — introduce characters as needed.",
-) -> dict:
+) -> tuple[dict, str]:
+    """Returns (llm_timeline, rendered_prompt)."""
     prompt = _render_timeline_prompt(
         chapter_id, chapter_title, chapter_body, segments, known_cast_text
     )
-    return _call_gemini_json(prompt)
+    return _call_gemini_json(prompt), prompt
 
 
 # --- Chapter splitter fallback --------------------------------------------

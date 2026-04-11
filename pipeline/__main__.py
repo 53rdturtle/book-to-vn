@@ -1,14 +1,34 @@
 import argparse
 import json
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from pipeline import bundle, cache, cast as cast_mod, chapters, config, segmenter
+from pipeline import asset_catalog, bundle, cache, cast as cast_mod, chapters, config, segmenter
+from pipeline.build_log import BuildLog
 from pipeline.llm import gemini_client
 from pipeline.segmenter import Segment
+
+
+class AssetIdError(Exception):
+    pass
+
+
+def _validate_asset_ids(llm_timeline: dict) -> None:
+    unknown: list[str] = []
+    for cmd in llm_timeline.get("commands", []):
+        t = cmd.get("type")
+        if t == "bg" and cmd["id"] not in asset_catalog.BG_SET:
+            unknown.append(f"bg '{cmd['id']}'")
+        elif t == "bgm_play" and cmd["id"] not in asset_catalog.BGM_SET:
+            unknown.append(f"bgm '{cmd['id']}'")
+        elif t == "se" and cmd["id"] not in asset_catalog.SE_SET:
+            unknown.append(f"se '{cmd['id']}'")
+    if unknown:
+        raise AssetIdError(f"Unknown asset IDs: {', '.join(unknown)}")
 
 
 def _load_schema(path: Path) -> dict:
@@ -77,17 +97,21 @@ def _cmd_build(args: argparse.Namespace) -> None:
 
     out_dir = Path(args.out)
     cast = {"cast": {}}
+    log = BuildLog(out_dir)
 
     prompt_template = config.PROMPT_PATH.read_text(encoding="utf-8")
     llm_schema_text = config.LLM_SCHEMA_PATH.read_text(encoding="utf-8")
 
     entries: list[bundle.BundleEntry] = []
+    total_segs = 0
 
     for chapter in chs:
         segs = segmenter.segment(chapter.id, chapter.body)
         if not segs:
             raise SystemExit(f"No segments produced from chapter {chapter.id!r}")
         print(f"[pipeline] {chapter.id}: {len(segs)} segments")
+        total_segs += len(segs)
+        log.segments(chapter.id, segs)
 
         known_cast_text = cast_mod.render_known_cast(cast)
         cache_key = cache.content_key(
@@ -100,6 +124,9 @@ def _cmd_build(args: argparse.Namespace) -> None:
             chapter.body,
             _segments_signature(segs),
             known_cast_text,
+            asset_catalog.BG_IDS,
+            asset_catalog.BGM_IDS,
+            asset_catalog.SE_IDS,
         )
 
         llm_timeline: dict | None = None
@@ -109,27 +136,45 @@ def _cmd_build(args: argparse.Namespace) -> None:
                 print(f"[pipeline] {chapter.id}: cache hit")
 
         if llm_timeline is None:
-            print(f"[pipeline] {chapter.id}: calling Gemini model {config.GEMINI_MODEL}")
-            llm_timeline = gemini_client.generate_timeline(
-                chapter.id, chapter.title, chapter.body, segs, known_cast_text=known_cast_text
-            )
-            _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"LLM output for {chapter.id}")
+            for attempt in range(2):
+                print(f"[pipeline] {chapter.id}: calling Gemini model {config.GEMINI_MODEL}"
+                      + (" (retry)" if attempt else ""))
+                t0 = time.time()
+                llm_timeline, rendered_prompt = gemini_client.generate_timeline(
+                    chapter.id, chapter.title, chapter.body, segs, known_cast_text=known_cast_text
+                )
+                elapsed = time.time() - t0
+                log.gemini_prompt(chapter.id, rendered_prompt)
+                log.gemini_response(chapter.id, llm_timeline, elapsed)
+                _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"LLM output for {chapter.id}")
+                try:
+                    _validate_asset_ids(llm_timeline)
+                    break
+                except AssetIdError as e:
+                    log.validation_error(chapter.id, "asset_ids", str(e))
+                    if attempt == 1:
+                        raise SystemExit(f"Asset-ID validation failed after retry: {e}")
+                    print(f"[pipeline] {chapter.id}: {e} — retrying")
             cache.put("gemini_timeline", cache_key, llm_timeline)
         else:
             _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"cached LLM output for {chapter.id}")
+            _validate_asset_ids(llm_timeline)
 
         timeline = _expand_says(llm_timeline, segs)
         _validate(timeline, config.SCHEMA_PATH, f"Runtime timeline for {chapter.id}")
 
         entries.append((chapter, segs, timeline))
         cast = cast_mod.update_from_timeline(cast, timeline, chapter.id)
+        log.cast_snapshot(chapter.id, cast)
 
     # Derive book title from the first chapter's first non-heading line for
     # multi-chapter inputs; single-chapter inputs keep the chapter title.
     book_title = chs[0].title if len(chs) == 1 else Path(args.input).stem
 
     bundle.write_bundle_multi(out_dir, entries, cast, book_title=book_title)
+    log.summary(len(chs), total_segs)
     print(f"[pipeline] bundle written to {out_dir.resolve()}")
+    print(f"[pipeline] build logs at {(out_dir / 'logs').resolve()}")
 
 
 def _cmd_validate(args: argparse.Namespace) -> None:

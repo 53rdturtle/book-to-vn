@@ -61,7 +61,7 @@
           "properties": {
             "type": { "const": "char_show" },
             "id": { "type": "string" },
-            "expr": { "type": "string" },
+            "expr": { "enum": ["neutral", "smile", "sad", "angry", "surprised", "worried", "thinking"] },
             "slot": { "$ref": "#/$defs/slot" }
           }
         },

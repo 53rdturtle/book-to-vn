@@ -10,6 +10,11 @@ KNOWN CAST (characters already established in earlier chapters — reuse their
 IDs exactly when they reappear, do NOT invent a new ID for the same person):
 {KNOWN_CAST}
 
+ASSET MANIFEST (you MUST only use IDs from these lists for bg, bgm, and se):
+Backgrounds: {BG_MANIFEST}
+Music: {BGM_MANIFEST}
+Sound effects: {SE_MANIFEST}
+
 RULES:
 - chapter_id MUST equal "{CHAPTER_ID}".
 - title SHOULD be "{CHAPTER_TITLE}".
@@ -25,10 +30,23 @@ RULES:
 - Start the chapter with a `bg` command. Add a `bgm_play` if mood warrants.
 - When a new character appears, emit `char_show` with slot in {left, middle, right}.
   Keep slot assignments stable for the same character throughout the chapter.
-- Use snake_case for all IDs. Examples: bg_forest_dawn, bgm_calm_01, se_door_creak,
-  alice, old_man. Expression examples: neutral, smile, sad, angry, surprised.
+- Use snake_case for all IDs (e.g. alice, old_man for characters).
+- Every bg.id, bgm_play.id, and se.id MUST come from the ASSET MANIFEST below.
+  Do NOT invent new asset IDs outside the manifest.
+- The `expr` field of `char_show` MUST be one of: neutral, smile, sad, angry,
+  surprised, worried, thinking. No other values are accepted.
 - The `speaker` field of a `say` should be a character id you introduced with
-  `char_show`, OR the literal string "narrator" for narration.
+  `char_show`, OR the literal string "narrator" for narration. Use "narrator"
+  for prose paragraphs that aren't direct speech — don't attribute narration
+  to a character.
+- Once you assign a character to a slot, keep them in that slot for the entire
+  chapter. Only reassign if a third character enters while two are already shown.
+- Emit a new `bg` command when the prose describes a location change. Don't
+  change bg within the same scene.
+- Use at most 2–3 `bgm_play` commands per chapter. Place them at mood
+  transitions, not every few lines.
+- Hide a character with `char_hide` when the prose says they leave, or before
+  a scene change (`bg`).
 - Do NOT invent extra segments. Do NOT drop any segments. Do NOT reorder them.
 
 CHAPTER TITLE: {CHAPTER_TITLE}

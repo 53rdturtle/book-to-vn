@@ -1,0 +1,17 @@
+{
+  "chapter_id": "ch01",
+  "title": "The Lantern at the Edge of the Wood",
+  "commands": [
+    { "type": "bg", "id": "bg_forest_day" },
+    { "type": "bgm_play", "id": "bgm_calm", "fade_ms": 800 },
+    { "type": "char_show", "id": "mara", "expr": "neutral", "slot": "left" },
+    { "type": "say", "speaker": "narrator", "seg": "ch01_seg001" },
+    { "type": "say", "speaker": "mara", "seg": "ch01_seg002" },
+    { "type": "char_show", "id": "old_man", "expr": "smile", "slot": "right" },
+    { "type": "say", "speaker": "old_man", "seg": "ch01_seg003" },
+    { "type": "say", "speaker": "mara", "seg": "ch01_seg004" },
+    { "type": "se", "id": "se_wind" },
+    { "type": "char_show", "id": "mara", "expr": "surprised", "slot": "left" },
+    { "type": "say", "speaker": "narrator", "seg": "ch01_seg005" }
+  ]
+}

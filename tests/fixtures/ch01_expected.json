@@ -1,0 +1,17 @@
+{
+  "chapter_id": "ch01",
+  "title": "The Lantern at the Edge of the Wood",
+  "commands": [
+    { "type": "bg", "id": "bg_forest_day" },
+    { "type": "bgm_play", "id": "bgm_calm", "fade_ms": 800 },
+    { "type": "char_show", "id": "mara", "expr": "neutral", "slot": "left" },
+    { "type": "say", "speaker": "narrator", "text": "The path wound through the ancient wood, dappled light filtering through leaves that whispered secrets to each other.", "voice_clip": "ch01_seg001.ogg" },
+    { "type": "say", "speaker": "mara", "text": "Mara paused at the fork, her lantern casting long shadows across the mossy stones beneath her feet.", "voice_clip": "ch01_seg002.ogg" },
+    { "type": "char_show", "id": "old_man", "expr": "smile", "slot": "right" },
+    { "type": "say", "speaker": "old_man", "text": "An old man sat on a stump, whittling a piece of wood. He looked up as she approached and smiled warmly.", "voice_clip": "ch01_seg003.ogg" },
+    { "type": "say", "speaker": "mara", "text": "\"I'm looking for the village beyond the ridge,\" Mara said, holding her lantern higher to see his face.", "voice_clip": "ch01_seg004.ogg" },
+    { "type": "se", "id": "se_wind" },
+    { "type": "char_show", "id": "mara", "expr": "surprised", "slot": "left" },
+    { "type": "say", "speaker": "narrator", "text": "A gust of wind swept through the clearing, and for a moment the lantern flickered as if it might go out entirely.", "voice_clip": "ch01_seg005.ogg" }
+  ]
+}
