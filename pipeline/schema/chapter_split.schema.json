@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chapter Splitter Output v1",
+  "description": "Compact Gemini output for the chapter-splitter fallback. Chapters reference the source text by 0-based line range.",
+  "type": "object",
+  "required": ["chapters"],
+  "additionalProperties": false,
+  "properties": {
+    "chapters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["title", "start_line", "end_line"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "start_line": { "type": "integer", "minimum": 0 },
+          "end_line": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VN Cast v1",
+  "description": "Persistent character roster for a bundle. Updated once per chapter during build.",
+  "type": "object",
+  "required": ["cast"],
+  "additionalProperties": false,
+  "properties": {
+    "cast": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["display_name", "first_chapter"],
+        "additionalProperties": false,
+        "properties": {
+          "display_name": { "type": "string", "minLength": 1 },
+          "first_chapter": { "type": "string", "pattern": "^ch[0-9]{2,}$" }
+        }
+      }
+    }
+  }
+}

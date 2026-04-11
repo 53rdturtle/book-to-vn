@@ -1,8 +1,43 @@
-class Cache:
-    """M1 stub. Real content-hash cache lands in M2."""
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
 
-    def get(self, stage: str, key: str):
+from pipeline import config
+
+
+def content_key(*parts: Any) -> str:
+    """Build a content-hash key from arbitrary stringifiable parts.
+
+    Callers pass every input that determines the result (prompt text, model,
+    chapter body, etc.) so that any change invalidates the cache automatically.
+    """
+    h = hashlib.sha256()
+    for p in parts:
+        if isinstance(p, (dict, list)):
+            blob = json.dumps(p, ensure_ascii=False, sort_keys=True)
+        else:
+            blob = str(p)
+        h.update(blob.encode("utf-8"))
+        h.update(b"\x00")
+    return h.hexdigest()
+
+
+def _path_for(stage: str, key: str) -> Path:
+    return config.CACHE_DIR / stage / key[:2] / f"{key}.json"
+
+
+def get(stage: str, key: str) -> Any | None:
+    path = _path_for(stage, key)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
         return None
 
-    def put(self, stage: str, key: str, value) -> None:
-        return None
+
+def put(stage: str, key: str, value: Any) -> None:
+    path = _path_for(stage, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")

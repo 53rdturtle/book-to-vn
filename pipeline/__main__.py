@@ -1,11 +1,12 @@
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from pipeline import bundle, chapters, config, segmenter
+from pipeline import bundle, cache, cast as cast_mod, chapters, config, segmenter
 from pipeline.llm import gemini_client
 from pipeline.segmenter import Segment
 
@@ -63,29 +64,71 @@ def _expand_says(llm_timeline: dict, segments: list[Segment]) -> dict:
     }
 
 
+def _segments_signature(segs: list[Segment]) -> list[dict]:
+    return [asdict(s) for s in segs]
+
+
 def _cmd_build(args: argparse.Namespace) -> None:
     text = Path(args.input).read_text(encoding="utf-8")
     chs = chapters.split(text)
-    if len(chs) != 1:
-        raise SystemExit("M1 only supports single-chapter input")
-    chapter = chs[0]
-
-    segs = segmenter.segment(chapter.id, chapter.body)
-    if not segs:
-        raise SystemExit("No segments produced from input text")
-    print(f"[pipeline] {len(segs)} segments from chapter {chapter.id!r}")
-
-    print(f"[pipeline] calling Gemini model {config.GEMINI_MODEL}")
-    llm_timeline = gemini_client.generate_timeline(chapter.id, chapter.title, chapter.body, segs)
-    _validate(llm_timeline, config.LLM_SCHEMA_PATH, "LLM output")
-    print(f"[pipeline] LLM output valid, {len(llm_timeline['commands'])} commands")
-
-    timeline = _expand_says(llm_timeline, segs)
-    _validate(timeline, config.SCHEMA_PATH, "Runtime timeline")
-    print(f"[pipeline] runtime timeline valid")
+    if not chs:
+        raise SystemExit("Chapter splitter returned no chapters")
+    print(f"[pipeline] split into {len(chs)} chapter(s)")
 
     out_dir = Path(args.out)
-    bundle.write_bundle(out_dir, chapter, segs, timeline)
+    cast = {"cast": {}}
+
+    prompt_template = config.PROMPT_PATH.read_text(encoding="utf-8")
+    llm_schema_text = config.LLM_SCHEMA_PATH.read_text(encoding="utf-8")
+
+    entries: list[bundle.BundleEntry] = []
+
+    for chapter in chs:
+        segs = segmenter.segment(chapter.id, chapter.body)
+        if not segs:
+            raise SystemExit(f"No segments produced from chapter {chapter.id!r}")
+        print(f"[pipeline] {chapter.id}: {len(segs)} segments")
+
+        known_cast_text = cast_mod.render_known_cast(cast)
+        cache_key = cache.content_key(
+            "gemini_timeline",
+            config.GEMINI_MODEL,
+            prompt_template,
+            llm_schema_text,
+            chapter.id,
+            chapter.title,
+            chapter.body,
+            _segments_signature(segs),
+            known_cast_text,
+        )
+
+        llm_timeline: dict | None = None
+        if not args.no_cache:
+            llm_timeline = cache.get("gemini_timeline", cache_key)
+            if llm_timeline is not None:
+                print(f"[pipeline] {chapter.id}: cache hit")
+
+        if llm_timeline is None:
+            print(f"[pipeline] {chapter.id}: calling Gemini model {config.GEMINI_MODEL}")
+            llm_timeline = gemini_client.generate_timeline(
+                chapter.id, chapter.title, chapter.body, segs, known_cast_text=known_cast_text
+            )
+            _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"LLM output for {chapter.id}")
+            cache.put("gemini_timeline", cache_key, llm_timeline)
+        else:
+            _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"cached LLM output for {chapter.id}")
+
+        timeline = _expand_says(llm_timeline, segs)
+        _validate(timeline, config.SCHEMA_PATH, f"Runtime timeline for {chapter.id}")
+
+        entries.append((chapter, segs, timeline))
+        cast = cast_mod.update_from_timeline(cast, timeline, chapter.id)
+
+    # Derive book title from the first chapter's first non-heading line for
+    # multi-chapter inputs; single-chapter inputs keep the chapter title.
+    book_title = chs[0].title if len(chs) == 1 else Path(args.input).stem
+
+    bundle.write_bundle_multi(out_dir, entries, cast, book_title=book_title)
     print(f"[pipeline] bundle written to {out_dir.resolve()}")
 
 
@@ -102,6 +145,7 @@ def main(argv: list[str] | None = None) -> None:
     b = sub.add_parser("build", help="Build a VN bundle from a .txt input")
     b.add_argument("input", help="Path to source .txt")
     b.add_argument("-o", "--out", required=True, help="Output bundle directory")
+    b.add_argument("--no-cache", action="store_true", help="Bypass the content-hash cache")
     b.set_defaults(func=_cmd_build)
 
     v = sub.add_parser("validate", help="Validate a chapter timeline JSON against the runtime schema")

@@ -2,6 +2,9 @@ import re
 from dataclasses import dataclass
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[\"'\w])")
+# TODO(M3?): CJK character density is ~2–3× ASCII, so 60–180 chars is too
+# large for Chinese input — produces overly long TTS segments. Add a
+# language-aware path that uses ~25–70 for CJK-majority chapters.
 _MIN_LEN = 60
 _MAX_LEN = 180
 

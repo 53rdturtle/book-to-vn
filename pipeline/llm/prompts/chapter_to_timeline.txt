@@ -6,9 +6,16 @@ only — no prose, no code fences.
 SCHEMA (LLM compact form):
 {SCHEMA}
 
+KNOWN CAST (characters already established in earlier chapters — reuse their
+IDs exactly when they reappear, do NOT invent a new ID for the same person):
+{KNOWN_CAST}
+
 RULES:
 - chapter_id MUST equal "{CHAPTER_ID}".
 - title SHOULD be "{CHAPTER_TITLE}".
+- If a character listed under KNOWN CAST appears in this chapter, reuse the
+  given ID verbatim in both `speaker` and `char_show.id`. Only mint new IDs
+  for characters not yet listed.
 - Every provided seg_id MUST appear in exactly one `say` command, in the SAME
   order as the segment list. Use `seg` to reference it. DO NOT include the
   segment text in your output — the pipeline expands it post-hoc. This is
