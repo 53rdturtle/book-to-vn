@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+
+# Pipeline output bundles
+out/
+
+# Godot
+godot_player/.godot/
+godot_player/.import/
+*.import
+
+# Claude Code local state
+.claude/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

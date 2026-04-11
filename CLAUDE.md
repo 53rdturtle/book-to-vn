@@ -1,0 +1,162 @@
+# Claude Code Context for book-to-vn
+
+## Architecture
+
+**Goal:** Turn plain-text novels/stories into playable visual novels in Godot.
+
+**Two decoupled halves:**
+1. **Python pipeline** (`pipeline/`) — ingests `.txt`, orchestrates chapter split → segmentation → Gemini LLM call → asset generation → TTS → writes a bundle.
+2. **Godot runtime** (`godot_player/`) — generic player that loads any bundle and plays it. No per-book Godot projects.
+
+**Contract:** JSON timeline schema is the only coupling. Both sides validate against it.
+
+### Pipeline Flow
+```
+book.txt
+  ↓ chapters.py (M1: single-chapter wrapper; M2: heuristic + Gemini fallback)
+segments (60–180 chars, merged from sentences)
+  ↓ gemini_client.py (compact LLM schema: say carries seg_id only)
+LLM timeline (schema: llm_timeline.schema.json)
+  ↓ _expand_says in __main__.py (resolves seg_id → text + voice_clip)
+Runtime timeline (schema: timeline.schema.json)
+  ↓ bundle.py (generates placeholder assets post-hoc from timeline commands)
+bundle/ directory structure (book.json, chapters/, assets/, voice/)
+  ↓ Godot BundleLoader (loads bundle, plays commands via TimelinePlayer)
+Visual novel playback
+```
+
+### Key Architectural Decisions (Locked M1)
+- **Input:** any `.txt`, structure-tolerant.
+- **Assets v1:** placeholder art (Pillow-drawn BGs + silhouettes) and silent TTS stubs. Real generation lands in M4–M5 behind adapter interfaces.
+- **Gemini output:** compact form (send `seg_id`, not prose text). Pipeline expands post-hoc for zero text drift. Token savings ~600 per chapter.
+- **Caching:** stub in M1 (no-op). Real content-hash cache wires in M2.
+- **Character state:** persistent `cast.json` deferred to M2. M1 has no cross-chapter memory.
+
+## File Structure
+
+```
+pipeline/
+  __main__.py              # CLI: `python -m pipeline build <txt> -o <bundle>`
+  config.py               # env loading, path constants
+  cache.py                # stub (M1); content-hash keyed cache (M2+)
+  chapters.py             # single-chapter wrapper (M1); multi-chapter heuristics (M2)
+  segmenter.py            # sentence split + merge to 60–180 chars
+  bundle.py               # writes bundle/ directory tree
+  llm/
+    gemini_client.py      # thin google-genai wrapper, JSON mode, 3× retry
+    prompts/chapter_to_timeline.txt  # interpolated with schema + segments
+  assets/
+    placeholders.py       # scan timeline → generate Pillow BGs/chars, silent OGGs
+  tts/
+    adapter.py            # abstract TTSAdapter interface
+    silent.py             # implements silent OGG generation by text length
+  schema/
+    timeline.schema.json       # runtime shape (what Godot reads)
+    llm_timeline.schema.json   # compact LLM shape (what Gemini emits)
+
+godot_player/
+  project.godot           # Godot 4.6 config, 1280×720
+  Main.tscn               # scene tree: Background, CharLeft/Middle/Right, DialogueBox, audio players
+  scripts/
+    BundleLoader.gd       # load bundle/ dir, parse JSON, resolve asset paths
+    Main.gd               # parse --bundle arg, load chapter 0, advance on input
+
+samples/
+  short.txt               # ~500-word test chapter (narrator + 2 characters)
+```
+
+## Command Examples
+
+```bash
+# Setup
+pip install -r pipeline/requirements.txt
+export GEMINI_API_KEY="..."
+
+# Build a bundle
+python -m pipeline build samples/short.txt -o out/short
+
+# Validate a timeline
+python -m pipeline validate out/short/chapters/ch01.json
+
+# Play in Godot (4.6+)
+godot --path godot_player -- --bundle ../out/short
+```
+
+## Gemini Integration
+
+**Model:** `gemini-3-flash-preview` (configurable via `GEMINI_MODEL` env; default in `config.py`).
+
+**Compact LLM Schema:** `say` commands only carry `{"type": "say", "speaker": "id", "seg": "ch01_seg003"}` — Gemini does NOT output prose. The pipeline expands `seg` → `text` + `voice_clip` post-hoc from the segmenter table.
+
+**Prompt:** `pipeline/llm/prompts/chapter_to_timeline.txt`. Embeds `llm_timeline.schema.json` at template-expansion time so schema and prompt stay in sync.
+
+**Validation:** LLM output validated against `llm_timeline.schema.json` immediately after Gemini call. Runtime timeline (post-expansion) validated against `timeline.schema.json` before bundle write.
+
+**Error Handling:** Transient failures retry 3× with backoff. Validation failures raise loudly (retry loop deferred to M3).
+
+## Data Model
+
+### Segment (Internal)
+```python
+@dataclass
+class Segment:
+    seg_id: str  # e.g. "ch01_seg003"
+    text: str    # 60–180 chars, merged sentences
+```
+
+### Timeline JSON (Runtime, in bundle)
+```json
+{
+  "chapter_id": "ch01",
+  "title": "The Arrival",
+  "commands": [
+    { "type": "bg", "id": "bg_forest_dawn" },
+    { "type": "char_show", "id": "alice", "expr": "neutral", "slot": "left" },
+    { "type": "say", "speaker": "alice", "text": "...", "voice_clip": "ch01_seg003.ogg" },
+    { "type": "char_hide", "id": "alice" },
+    { "type": "bgm_play", "id": "bgm_calm", "fade_ms": 800 }
+  ]
+}
+```
+
+Slots: `left`, `middle`, `right` (fixed enum). Expressions free-form in M1; enum in M3.
+
+### Bundle on Disk
+```
+bundle/
+  book.json                  # { title, chapters: [...] }
+  chapters/ch01.json         # runtime timeline
+  assets/
+    bg/bg_*.png              # 1920×1080 placeholder BGs
+    char/<id>/<expr>.png     # 600×1200 silhouette chars
+    bgm/<id>.ogg             # silent 5-sec OGGs
+    se/<id>.ogg              # silent 0.8-sec OGGs
+  voice/ch01_seg*.ogg        # silent OGGs, length ∝ text length
+```
+
+## Known Limitations (M1)
+
+- **Single chapter only:** `chapters.py` wraps entire input as one chapter. Multi-chapter heuristics land in M2.
+- **No caching:** `cache.py` is a stub. All Gemini calls execute; re-runs don't hit cache. M2 adds content-hash cache at every stage.
+- **No character persistence:** Each chapter's `char_show` commands introduce characters fresh. No cross-chapter state. `cast.json` and character history land in M2.
+- **Placeholder-only assets:** All backgrounds are solid colors with ID labels. All characters are silhouettes. Silent TTS stubs. Real image gen (M4) and real TTS (M5) behind adapter interfaces.
+- **No validation of asset IDs against manifest:** Gemini can reference any ID; we generate placeholders for whatever it uses. M3 adds a pre-declared asset manifest and validator rejects unknown IDs with retry.
+- **No expression enum:** Expressions are free-form strings. M3 locks an enum (neutral, smile, sad, angry, surprised, ...).
+- **No inline effects:** `say` commands don't support word-level styling (bold, color, shake). M3+ adds optional `fx` array with word-offset spans.
+
+## Milestones
+
+- **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
+- **M2 (next):** Multi-chapter ingestion. Heuristic splitter + Gemini fallback. Content-hash cache. Persistent `cast.json`.
+- **M3:** Prompt quality & coherence. Asset-ID discipline. Expression enum. Golden-file tests.
+- **M4:** Real image gen (Imagen or local SD). Per-character reference pinning.
+- **M5:** Real TTS. Per-character voice assignment.
+- **M6:** BGM/SE library. Mood-based selection.
+- **M7:** Polish. Save/load, backlog, text speed, skip read. Standalone export.
+
+## Development Notes
+
+- **Schema is stable:** Timeline schema is the contract between pipeline and Godot. Changes to it block both halves. Validate early.
+- **Segments are immutable per build:** Once written to `voice/` and `chapters/`, segment IDs and text don't change. Makes caching safe.
+- **Godot loads external assets at runtime:** Uses `Image.load_from_file()` for PNG and `AudioStreamOggVorbis.load_from_file()` for OGG. Both work on 4.6+. Paths must resolve from the bundle root.
+- **Command dispatch in Godot is single-threaded:** `TimelinePlayer` steps through commands sequentially, advancing only on user input (space/enter/click). Voice clips play while dialogue is on screen; BGM fades persist across advances.

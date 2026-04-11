@@ -1,0 +1,7 @@
+google-genai>=0.3.0
+jsonschema>=4.0.0
+Pillow>=10.0.0
+python-dotenv>=1.0.0
+# soundfile needs libsndfile on the system; on Windows it ships with wheels.
+soundfile>=0.12.0
+numpy>=1.24.0

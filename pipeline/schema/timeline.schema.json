@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VN Chapter Timeline v1",
+  "type": "object",
+  "required": ["chapter_id", "title", "commands"],
+  "additionalProperties": false,
+  "properties": {
+    "chapter_id": { "type": "string", "pattern": "^ch[0-9]{2,}$" },
+    "title": { "type": "string" },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/command" }
+    }
+  },
+  "$defs": {
+    "slot": { "enum": ["left", "middle", "right"] },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "bg" },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "bgm_play" },
+            "id": { "type": "string" },
+            "fade_ms": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "bgm_stop" },
+            "fade_ms": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "se" },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id", "expr", "slot"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "char_show" },
+            "id": { "type": "string" },
+            "expr": { "type": "string" },
+            "slot": { "$ref": "#/$defs/slot" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "char_hide" },
+            "id": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "speaker", "text", "voice_clip"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "say" },
+            "speaker": { "type": "string" },
+            "text": { "type": "string" },
+            "voice_clip": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}

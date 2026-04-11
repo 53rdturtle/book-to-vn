@@ -1,0 +1,121 @@
+extends Control
+
+const BundleLoaderScript = preload("res://scripts/BundleLoader.gd")
+
+@onready var background: TextureRect = $Background
+@onready var char_left: TextureRect = $CharLeft
+@onready var char_middle: TextureRect = $CharMiddle
+@onready var char_right: TextureRect = $CharRight
+@onready var bgm_player: AudioStreamPlayer = $BGMPlayer
+@onready var se_player: AudioStreamPlayer = $SEPlayer
+@onready var voice_player: AudioStreamPlayer = $VoicePlayer
+@onready var speaker_label: Label = $DialogueBox/SpeakerName
+@onready var dialogue_label: RichTextLabel = $DialogueBox/DialogueText
+
+var loader: BundleLoaderScript
+var commands: Array = []
+var idx: int = 0
+var char_slots: Dictionary = {}
+
+func _ready() -> void:
+    char_slots = {
+        "left": char_left,
+        "middle": char_middle,
+        "right": char_right,
+    }
+    for node in char_slots.values():
+        node.texture = null
+        node.set_meta("char_id", "")
+
+    var bundle_path := _parse_bundle_arg()
+    if bundle_path == "":
+        speaker_label.text = ""
+        dialogue_label.text = "[No --bundle <path> argument provided]"
+        return
+
+    loader = BundleLoaderScript.new(bundle_path)
+    var chapter: Dictionary = loader.load_chapter(0)
+    commands = chapter.get("commands", [])
+    _advance_until_say()
+
+func _parse_bundle_arg() -> String:
+    var args: PackedStringArray = OS.get_cmdline_user_args()
+    for i in args.size():
+        if args[i] == "--bundle" and i + 1 < args.size():
+            return args[i + 1]
+    return ""
+
+func _unhandled_input(event: InputEvent) -> void:
+    var advance := false
+    if event is InputEventKey and event.pressed and not event.echo:
+        if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
+            advance = true
+    elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+        advance = true
+    if advance:
+        _advance_until_say()
+
+func _advance_until_say() -> void:
+    while idx < commands.size():
+        var cmd: Dictionary = commands[idx]
+        idx += 1
+        if _apply(cmd):
+            return
+    speaker_label.text = ""
+    dialogue_label.text = "[End of chapter]"
+
+func _apply(cmd: Dictionary) -> bool:
+    var t: String = cmd.get("type", "")
+    match t:
+        "bg":
+            _set_texture(background, loader.bg_path(cmd["id"]))
+        "char_show":
+            var slot: String = cmd["slot"]
+            if char_slots.has(slot):
+                var node: TextureRect = char_slots[slot]
+                _set_texture(node, loader.char_path(cmd["id"], cmd["expr"]))
+                node.set_meta("char_id", cmd["id"])
+        "char_hide":
+            var target_id: String = cmd["id"]
+            for slot in char_slots.keys():
+                var node: TextureRect = char_slots[slot]
+                if node.get_meta("char_id", "") == target_id:
+                    node.texture = null
+                    node.set_meta("char_id", "")
+        "bgm_play":
+            var stream := _load_ogg(loader.bgm_path(cmd["id"]))
+            if stream:
+                bgm_player.stream = stream
+                bgm_player.play()
+        "bgm_stop":
+            bgm_player.stop()
+        "se":
+            var stream2 := _load_ogg(loader.se_path(cmd["id"]))
+            if stream2:
+                se_player.stream = stream2
+                se_player.play()
+        "say":
+            speaker_label.text = String(cmd.get("speaker", ""))
+            dialogue_label.text = String(cmd.get("text", ""))
+            var vs := _load_ogg(loader.voice_path(String(cmd.get("voice_clip", ""))))
+            if vs:
+                voice_player.stream = vs
+                voice_player.play()
+            return true
+    return false
+
+func _set_texture(rect: TextureRect, path: String) -> void:
+    if not FileAccess.file_exists(path):
+        push_warning("Missing image: " + path)
+        return
+    var img := Image.new()
+    var err := img.load(path)
+    if err != OK:
+        push_warning("Failed to load image: " + path)
+        return
+    rect.texture = ImageTexture.create_from_image(img)
+
+func _load_ogg(path: String) -> AudioStreamOggVorbis:
+    if path == "" or not FileAccess.file_exists(path):
+        return null
+    return AudioStreamOggVorbis.load_from_file(path)
