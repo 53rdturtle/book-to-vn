@@ -45,7 +45,7 @@ func _parse_bundle_arg() -> String:
             return args[i + 1]
     return ""
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
     var advance := false
     if event is InputEventKey and event.pressed and not event.echo:
         if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
