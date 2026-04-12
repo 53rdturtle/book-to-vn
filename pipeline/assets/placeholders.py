@@ -4,6 +4,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from pipeline.assets.adapter import ImageAdapter
+
 BG_SIZE = (1920, 1080)
 CHAR_SIZE = (600, 1200)
 
@@ -70,3 +72,18 @@ def generate_char(char_id: str, expr: str, out_path: Path) -> None:
     label = f"{char_id}\n({expr})"
     draw.text((40, 40), label, fill=(255, 255, 255, 255), font=_font())
     img.save(out_path, format="PNG")
+
+
+class PlaceholderAdapter(ImageAdapter):
+    def generate_bg(self, bg_id: str, description: str, out_path: Path) -> None:
+        generate_bg(bg_id, out_path)
+
+    def generate_char(
+        self,
+        char_id: str,
+        expr: str,
+        description: str,
+        out_path: Path,
+        reference: Path | None = None,
+    ) -> None:
+        generate_char(char_id, expr, out_path)

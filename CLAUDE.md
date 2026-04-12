@@ -45,9 +45,13 @@ pipeline/
   bundle.py               # writes bundle/ directory tree
   llm/
     gemini_client.py      # thin google-genai wrapper, JSON mode, 3× retry
+    visual_descriptions.py # LLM-driven character/background visual descriptions (M4)
     prompts/chapter_to_timeline.txt  # interpolated with schema + segments
+    prompts/visual_descriptions.txt  # propose descriptions from book title + excerpt (M4)
   assets/
-    placeholders.py       # scan timeline → generate Pillow BGs/chars, silent OGGs
+    adapter.py            # abstract ImageAdapter interface (M4)
+    placeholders.py       # PlaceholderAdapter: scan timeline → generate Pillow BGs/chars
+    nanobanana.py         # NanoBananaAdapter: Gemini 3.1 Flash Image real image gen (M4)
   tts/
     adapter.py            # abstract TTSAdapter interface
     silent.py             # implements silent OGG generation by text length
@@ -80,8 +84,11 @@ samples/
 pip install -r pipeline/requirements.txt
 export GEMINI_API_KEY="..."
 
-# Build a bundle (single chapter)
+# Build a bundle with placeholder assets (default)
 python -m pipeline build samples/short.txt -o out/short
+
+# Build with real Nano Banana 2 (Gemini 3.1 Flash Image) assets
+python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
 
 # Multi-chapter (Chinese primary, English regression)
 python -m pipeline build samples/multi_zh.txt -o out/multi_zh
@@ -105,6 +112,8 @@ python -m pipeline validate out/short/chapters/ch01.json
 
 ## Gemini Integration
 
+### Timeline Generation
+
 **Model:** `gemini-3-flash-preview` (configurable via `GEMINI_MODEL` env; default in `config.py`).
 
 **Compact LLM Schema:** `say` commands only carry `{"type": "say", "speaker": "id", "seg": "ch01_seg003"}` — Gemini does NOT output prose. The pipeline expands `seg` → `text` + `voice_clip` post-hoc from the segmenter table.
@@ -116,6 +125,28 @@ python -m pipeline validate out/short/chapters/ch01.json
 **Asset-ID Discipline:** `pipeline/asset_catalog.py` defines curated pools of bg/bgm/se IDs. The prompt injects these as an ASSET MANIFEST. Post-LLM validation checks all IDs against the catalog; unknown IDs trigger one retry before failing.
 
 **Error Handling:** Transient failures retry 3× with backoff. Schema validation failures raise loudly. Asset-ID validation retries once with feedback.
+
+### Image Generation (M4)
+
+**Model:** `gemini-3.1-flash-image-preview` (Nano Banana 2, configurable via `NANO_BANANA_MODEL` env).
+
+**Output:** 1K resolution (configurable via `NANO_BANANA_IMAGE_SIZE` env; bump to 2K/4K post-prototyping).
+
+**Workflow:** `--image-gen nanobanana` triggers 3-phase pipeline:
+1. LLM proposes character/background visual descriptions (leans on knowledge of well-known source works)
+2. User confirms or edits descriptions via stdin
+3. **Phase A:** Generate baseline character (style anchor for entire book)
+4. **Phase B:** Generate basic (neutral) characters using baseline as reference → user confirms
+5. **Phase C:** Generate all expression variants per character (auto)
+6. Generate backgrounds from enriched descriptions
+
+**Character Consistency:** Baseline → basic reference → expression variants via image-to-image.
+
+**Major Character Filter:** Only characters with ≥10 appearances (configurable via `MAJOR_CHAR_MIN_APPEARANCES`) receive NanoBanana images. Minor characters fall back to placeholder silhouettes.
+
+**Caching:** Image cache at `~/.book-to-vn/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
+
+**Descriptions:** Stored in `cast.json` (`visual_description` field) and reused across chapters. First-appearance descriptions are generated once and persisted.
 
 ## Data Model
 
@@ -161,7 +192,7 @@ bundle/
 
 - **Chapter splitter scale limit:** Heuristics handle well-formatted books cleanly. The Gemini fallback embeds the entire text as numbered lines in the prompt, so inputs beyond ~30k characters may exceed context comfortably. Windowed splitting is a stub — revisit in M4+.
 - **Cast display names are raw IDs:** `cast.json` uses the Gemini-generated speaker ID as `display_name` on first sight. For Chinese input this is usually fine (IDs are Chinese characters); for pinyin'd IDs it looks rough. Future milestone can add a dedicated name field.
-- **Placeholder-only assets:** All backgrounds are solid colors with ID labels. All characters are silhouettes. Silent TTS stubs. Real image gen (M4) and real TTS (M5) behind adapter interfaces.
+- **Silent TTS stubs:** Voice clips are silent OGGs scaled by text length. Real TTS (M5) behind adapter interface.
 - **Static asset catalog:** `asset_catalog.py` has a fixed set of bg/bgm/se IDs. Future milestones can make this context-dependent (genre, setting).
 - **No inline effects:** `say` commands don't support word-level styling (bold, color, shake). Future milestone adds optional `fx` array with word-offset spans.
 
@@ -169,9 +200,9 @@ bundle/
 
 - **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
 - **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache at `~/.book-to-vn/cache` (override with `BOOK_TO_VN_CACHE_DIR`). Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
-- **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (27 tests via pytest).
-- **M4 (next):** Real image gen (Imagen or local SD). Per-character reference pinning.
-- **M5:** Real TTS. Per-character voice assignment.
+- **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (30 tests via pytest).
+- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing.
+- **M5 (next):** Real TTS. Per-character voice assignment.
 - **M6:** BGM/SE library. Mood-based selection.
 - **M7:** Polish. Save/load, backlog, text speed, skip read. Standalone export.
 

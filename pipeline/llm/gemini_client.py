@@ -35,6 +35,10 @@ def _render_timeline_prompt(
     )
 
 
+def call_gemini_json(prompt: str) -> dict:
+    return _call_gemini_json(prompt)
+
+
 def _call_gemini_json(prompt: str) -> dict:
     if not config.GEMINI_API_KEY:
         raise GeminiError("GEMINI_API_KEY is not set")

@@ -37,18 +37,35 @@ def save(bundle_dir: Path, cast: dict) -> None:
 
 
 def update_from_timeline(cast: dict, timeline: dict, chapter_id: str) -> dict:
-    """Return a new cast dict with any newly-seen character IDs registered."""
-    roster: dict = dict(cast.get("cast", {}))
+    """Return a new cast dict with any newly-seen character IDs registered
+    and per-character appearance counts incremented."""
+    roster: dict = {cid: dict(meta) for cid, meta in cast.get("cast", {}).items()}
+
+    def _bump(cid: str) -> None:
+        entry = roster.setdefault(
+            cid, {"display_name": cid, "first_chapter": chapter_id, "appearance_count": 0}
+        )
+        entry.setdefault("appearance_count", 0)
+        entry["appearance_count"] += 1
+
     for cmd in timeline.get("commands", []):
         t = cmd.get("type")
         if t == "char_show":
             cid = cmd.get("id")
-            if cid and cid not in roster:
-                roster[cid] = {"display_name": cid, "first_chapter": chapter_id}
+            if cid:
+                _bump(cid)
         elif t == "say":
             speaker = cmd.get("speaker")
-            if speaker and speaker != _NARRATOR and speaker not in roster:
-                roster[speaker] = {"display_name": speaker, "first_chapter": chapter_id}
+            if speaker and speaker != _NARRATOR:
+                _bump(speaker)
+    return {"cast": roster}
+
+
+def set_visual_description(cast: dict, char_id: str, description: str) -> dict:
+    """Return a new cast dict with visual_description set for char_id."""
+    roster = {cid: dict(meta) for cid, meta in cast.get("cast", {}).items()}
+    if char_id in roster:
+        roster[char_id]["visual_description"] = description
     return {"cast": roster}
 
 

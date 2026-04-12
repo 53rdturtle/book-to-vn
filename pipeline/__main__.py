@@ -8,8 +8,11 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from pipeline import asset_catalog, bundle, cache, cast as cast_mod, chapters, config, segmenter
+from pipeline.assets import placeholders
+from pipeline.assets.adapter import ImageAdapter
+from pipeline.assets.placeholders import PlaceholderAdapter
 from pipeline.build_log import BuildLog
-from pipeline.llm import gemini_client
+from pipeline.llm import gemini_client, visual_descriptions
 from pipeline.segmenter import Segment
 
 
@@ -86,6 +89,157 @@ def _expand_says(llm_timeline: dict, segments: list[Segment]) -> dict:
 
 def _segments_signature(segs: list[Segment]) -> list[dict]:
     return [asdict(s) for s in segs]
+
+
+_ALL_EXPRS = ("neutral", "smile", "sad", "angry", "surprised", "worried", "thinking")
+
+
+def _confirm(message: str) -> None:
+    print(f"\n{message}")
+    while True:
+        ans = input("Continue? [y/N]: ").strip().lower()
+        if ans == "y":
+            return
+        if ans in ("n", "", "q"):
+            raise SystemExit("Aborted by user.")
+        print("Please answer 'y' to continue or 'n' to abort.")
+
+
+def _collect_excerpt(entries: list[bundle.BundleEntry], max_segments: int = 10) -> str:
+    lines: list[str] = []
+    for _chapter, segs, _timeline in entries:
+        for seg in segs:
+            lines.append(seg.text)
+            if len(lines) >= max_segments:
+                return "\n".join(lines)
+    return "\n".join(lines)
+
+
+def _collect_manifests(entries: list[bundle.BundleEntry]) -> tuple[set[str], dict[str, set[str]]]:
+    bg_ids: set[str] = set()
+    char_exprs: dict[str, set[str]] = {}
+    for _chapter, _segs, timeline in entries:
+        m = placeholders.scan(timeline)
+        bg_ids |= m.bgs
+        for cid, expr in m.chars:
+            char_exprs.setdefault(cid, set()).add(expr)
+    return bg_ids, char_exprs
+
+
+def _editable_input(label: str, default: str) -> str:
+    print(f"\n{label}")
+    print(f"  Proposed: {default}")
+    ans = input("  Accept (enter) or type replacement: ").strip()
+    return ans or default
+
+
+def _run_nanobanana_pipeline(
+    out_dir: Path,
+    entries: list[bundle.BundleEntry],
+    cast: dict,
+    book_title: str,
+) -> tuple[ImageAdapter, dict, dict]:
+    """Execute 3-phase char pipeline + BG proposal. Returns (adapter, visual_descriptions, cast).
+
+    Only major characters go through NanoBanana; minor characters are left for
+    the PlaceholderAdapter path inside write_bundle_multi.
+    """
+    from pipeline.assets.nanobanana import NanoBananaAdapter
+
+    bg_ids, char_exprs = _collect_manifests(entries)
+    roster = cast.get("cast", {})
+
+    major_chars = sorted(
+        cid for cid in char_exprs
+        if roster.get(cid, {}).get("appearance_count", 0) >= config.MAJOR_CHAR_MIN_APPEARANCES
+    )
+    minor_chars = sorted(set(char_exprs) - set(major_chars))
+
+    print(f"[nanobanana] major characters (>= {config.MAJOR_CHAR_MIN_APPEARANCES} appearances): "
+          f"{major_chars or '(none)'}")
+    if minor_chars:
+        print(f"[nanobanana] minor characters (using placeholder silhouettes): {minor_chars}")
+    print(f"[nanobanana] backgrounds to generate: {sorted(bg_ids) or '(none)'}")
+
+    # --- Visual descriptions (LLM proposes, user confirms/edits) ---
+    chars_needing_desc = [
+        cid for cid in major_chars
+        if not roster.get(cid, {}).get("visual_description")
+    ]
+    bgs_needing_desc = sorted(bg_ids)
+
+    char_descs: dict[str, str] = {
+        cid: roster.get(cid, {}).get("visual_description", "")
+        for cid in major_chars
+        if roster.get(cid, {}).get("visual_description")
+    }
+    bg_descs: dict[str, str] = {}
+
+    if chars_needing_desc or bgs_needing_desc:
+        excerpt = _collect_excerpt(entries)
+        print(f"\n[nanobanana] proposing descriptions via {config.GEMINI_MODEL}...")
+        proposed = visual_descriptions.propose(
+            book_title=book_title,
+            char_ids=chars_needing_desc,
+            bg_ids=bgs_needing_desc,
+            excerpt=excerpt,
+        )
+        for cid in chars_needing_desc:
+            desc = proposed["characters"].get(cid, "")
+            char_descs[cid] = _editable_input(f"Character '{cid}'", desc)
+            cast = cast_mod.set_visual_description(cast, cid, char_descs[cid])
+        for bg_id in bgs_needing_desc:
+            desc = proposed["backgrounds"].get(bg_id, "")
+            bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc)
+
+    adapter = NanoBananaAdapter()
+
+    # --- Phase A: baseline character ---
+    baseline_path = out_dir / config.BUNDLE_CHAR_DIR / "_baseline" / "neutral.png"
+    if not baseline_path.exists():
+        print(f"\n[nanobanana] Phase A: generating baseline character art style...")
+        adapter.generate_baseline(baseline_path)
+    print(f"[nanobanana] baseline at: {baseline_path}")
+    if major_chars:
+        _confirm("Review the baseline image above. This anchors the art style for all characters.")
+
+    # --- Phase B: basic (neutral) character refs ---
+    if major_chars:
+        print(f"\n[nanobanana] Phase B: generating basic character refs (neutral)...")
+        for cid in major_chars:
+            char_out = out_dir / config.BUNDLE_CHAR_DIR / cid / "neutral.png"
+            if not char_out.exists():
+                print(f"  - {cid}")
+                adapter.generate_char(cid, "neutral", char_descs.get(cid, ""),
+                                      char_out, reference=baseline_path)
+        _confirm("Review the basic character images above. Expression variants will branch from these.")
+
+    # --- Phase C: expression variants ---
+    for cid in major_chars:
+        neutral_ref = out_dir / config.BUNDLE_CHAR_DIR / cid / "neutral.png"
+        exprs = sorted(char_exprs.get(cid, set()) - {"neutral"})
+        if not exprs:
+            continue
+        print(f"\n[nanobanana] Phase C: expressions for '{cid}': {exprs}")
+        for expr in exprs:
+            char_out = out_dir / config.BUNDLE_CHAR_DIR / cid / f"{expr}.png"
+            if not char_out.exists():
+                adapter.generate_char(cid, expr, char_descs.get(cid, ""),
+                                      char_out, reference=neutral_ref)
+
+    # --- Backgrounds ---
+    if bg_ids:
+        print(f"\n[nanobanana] generating {len(bg_ids)} background(s)...")
+        for bg_id in sorted(bg_ids):
+            bg_out = out_dir / config.BUNDLE_BG_DIR / f"{bg_id}.png"
+            if not bg_out.exists():
+                print(f"  - {bg_id}")
+                adapter.generate_bg(bg_id, bg_descs.get(bg_id, ""), bg_out)
+
+    # For the final bundle write, route minor chars through placeholder.
+    # Major chars already have files on disk and bundle.py skips existing files.
+    visual = {"characters": char_descs, "backgrounds": bg_descs}
+    return PlaceholderAdapter(), visual, cast
 
 
 def _cmd_build(args: argparse.Namespace) -> None:
@@ -171,7 +325,20 @@ def _cmd_build(args: argparse.Namespace) -> None:
     # multi-chapter inputs; single-chapter inputs keep the chapter title.
     book_title = chs[0].title if len(chs) == 1 else Path(args.input).stem
 
-    bundle.write_bundle_multi(out_dir, entries, cast, book_title=book_title)
+    image_adapter: ImageAdapter | None = None
+    visual: dict | None = None
+    if args.image_gen == "nanobanana":
+        out_dir.mkdir(parents=True, exist_ok=True)
+        image_adapter, visual, cast = _run_nanobanana_pipeline(
+            out_dir, entries, cast, book_title
+        )
+
+    bundle.write_bundle_multi(
+        out_dir, entries, cast,
+        book_title=book_title,
+        image_adapter=image_adapter,
+        visual_descriptions=visual,
+    )
     log.summary(len(chs), total_segs)
     print(f"[pipeline] bundle written to {out_dir.resolve()}")
     print(f"[pipeline] build logs at {(out_dir / 'logs').resolve()}")
@@ -191,6 +358,10 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("input", help="Path to source .txt")
     b.add_argument("-o", "--out", required=True, help="Output bundle directory")
     b.add_argument("--no-cache", action="store_true", help="Bypass the content-hash cache")
+    b.add_argument(
+        "--image-gen", choices=["placeholder", "nanobanana"], default="placeholder",
+        help="Image generation backend (default: placeholder)",
+    )
     b.set_defaults(func=_cmd_build)
 
     v = sub.add_parser("validate", help="Validate a chapter timeline JSON against the runtime schema")

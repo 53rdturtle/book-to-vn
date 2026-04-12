@@ -8,6 +8,11 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 
+NANO_BANANA_MODEL = os.environ.get("NANO_BANANA_MODEL", "gemini-3.1-flash-image-preview")
+NANO_BANANA_IMAGE_SIZE = os.environ.get("NANO_BANANA_IMAGE_SIZE", "1K")
+IMAGE_GEN_STYLE = os.environ.get("IMAGE_GEN_STYLE", "anime visual novel style")
+MAJOR_CHAR_MIN_APPEARANCES = int(os.environ.get("MAJOR_CHAR_MIN_APPEARANCES", "10"))
+
 BUNDLE_BOOK_JSON = "book.json"
 BUNDLE_CHAPTERS_DIR = "chapters"
 BUNDLE_ASSETS_DIR = "assets"

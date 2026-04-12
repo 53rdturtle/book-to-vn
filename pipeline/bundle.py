@@ -4,6 +4,8 @@ from pathlib import Path
 from pipeline import cast as cast_mod
 from pipeline import config
 from pipeline.assets import placeholders
+from pipeline.assets.adapter import ImageAdapter
+from pipeline.assets.placeholders import PlaceholderAdapter
 from pipeline.chapters import Chapter
 from pipeline.segmenter import Segment
 from pipeline.tts.silent import SilentTTS, silent_ogg
@@ -21,10 +23,17 @@ def write_bundle_multi(
     entries: list[BundleEntry],
     cast: dict,
     book_title: str | None = None,
+    image_adapter: ImageAdapter | None = None,
+    visual_descriptions: dict | None = None,
 ) -> None:
     if not entries:
         raise SystemExit("No chapters to write")
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    adapter = image_adapter or PlaceholderAdapter()
+    descriptions = visual_descriptions or {"characters": {}, "backgrounds": {}}
+    char_descs = descriptions.get("characters", {})
+    bg_descs = descriptions.get("backgrounds", {})
 
     title = book_title or entries[0][0].title
     book = {
@@ -50,11 +59,15 @@ def write_bundle_multi(
 
         manifest = placeholders.scan(timeline)
         for bg_id in sorted(manifest.bgs):
-            placeholders.generate_bg(bg_id, out_dir / config.BUNDLE_BG_DIR / f"{bg_id}.png")
+            bg_path = out_dir / config.BUNDLE_BG_DIR / f"{bg_id}.png"
+            if not bg_path.exists():
+                adapter.generate_bg(bg_id, bg_descs.get(bg_id, ""), bg_path)
         for char_id, expr in sorted(manifest.chars):
-            placeholders.generate_char(
-                char_id, expr, out_dir / config.BUNDLE_CHAR_DIR / char_id / f"{expr}.png"
-            )
+            char_path = out_dir / config.BUNDLE_CHAR_DIR / char_id / f"{expr}.png"
+            if not char_path.exists():
+                adapter.generate_char(
+                    char_id, expr, char_descs.get(char_id, ""), char_path
+                )
         for bgm_id in sorted(manifest.bgms):
             p = out_dir / config.BUNDLE_BGM_DIR / f"{bgm_id}.ogg"
             p.parent.mkdir(parents=True, exist_ok=True)

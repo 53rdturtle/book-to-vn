@@ -27,6 +27,10 @@ def _path_for(stage: str, key: str) -> Path:
     return config.CACHE_DIR / stage / key[:2] / f"{key}.json"
 
 
+def _bytes_path_for(stage: str, key: str, ext: str) -> Path:
+    return config.CACHE_DIR / stage / key[:2] / f"{key}.{ext}"
+
+
 def get(stage: str, key: str) -> Any | None:
     path = _path_for(stage, key)
     if not path.exists():
@@ -41,3 +45,19 @@ def put(stage: str, key: str, value: Any) -> None:
     path = _path_for(stage, key)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_bytes(stage: str, key: str, ext: str = "png") -> bytes | None:
+    path = _bytes_path_for(stage, key, ext)
+    if not path.exists():
+        return None
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def put_bytes(stage: str, key: str, data: bytes, ext: str = "png") -> None:
+    path = _bytes_path_for(stage, key, ext)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)

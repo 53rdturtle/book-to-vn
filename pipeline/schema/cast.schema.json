@@ -14,7 +14,9 @@
         "additionalProperties": false,
         "properties": {
           "display_name": { "type": "string", "minLength": 1 },
-          "first_chapter": { "type": "string", "pattern": "^ch[0-9]{2,}$" }
+          "first_chapter": { "type": "string", "pattern": "^ch[0-9]{2,}$" },
+          "visual_description": { "type": "string" },
+          "appearance_count": { "type": "integer", "minimum": 0 }
         }
       }
     }
