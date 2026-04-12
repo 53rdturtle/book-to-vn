@@ -17,6 +17,11 @@ var commands: Array = []
 var idx: int = 0
 var char_slots: Dictionary = {}
 
+const TYPE_CHARS_PER_SEC: float = 45.0
+var is_typing: bool = false
+var type_accum: float = 0.0
+var total_chars: int = 0
+
 func _ready() -> void:
     char_slots = {
         "left": char_left,
@@ -26,6 +31,7 @@ func _ready() -> void:
     for node in char_slots.values():
         node.texture = null
         node.set_meta("char_id", "")
+    dialogue_label.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING
 
     var bundle_path := _parse_bundle_arg()
     if bundle_path == "":
@@ -53,7 +59,24 @@ func _input(event: InputEvent) -> void:
     elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
         advance = true
     if advance:
-        _advance_until_say()
+        if is_typing:
+            _finish_typing()
+        else:
+            _advance_until_say()
+
+func _process(delta: float) -> void:
+    if not is_typing:
+        return
+    type_accum += delta * TYPE_CHARS_PER_SEC
+    var shown := int(type_accum)
+    if shown >= total_chars:
+        _finish_typing()
+    else:
+        dialogue_label.visible_characters = shown
+
+func _finish_typing() -> void:
+    is_typing = false
+    dialogue_label.visible_characters = -1
 
 func _advance_until_say() -> void:
     while idx < commands.size():
@@ -97,6 +120,10 @@ func _apply(cmd: Dictionary) -> bool:
         "say":
             speaker_label.text = String(cmd.get("speaker", ""))
             dialogue_label.text = String(cmd.get("text", ""))
+            total_chars = dialogue_label.get_total_character_count()
+            dialogue_label.visible_characters = 0
+            type_accum = 0.0
+            is_typing = total_chars > 0
             var vs := _load_ogg(loader.voice_path(String(cmd.get("voice_clip", ""))))
             if vs:
                 voice_player.stream = vs
