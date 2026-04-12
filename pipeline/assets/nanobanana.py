@@ -95,6 +95,10 @@ def _save_resized(
         img = img.convert("RGBA")
     elif mode == "RGB" and img.mode != "RGB":
         img = img.convert("RGB")
+    if mode == "RGBA":
+        bbox = img.getchannel("A").getbbox()
+        if bbox:
+            img = img.crop(bbox)
     tw, th = size
     iw, ih = img.size
     scale = min(tw / iw, th / ih)
@@ -157,7 +161,8 @@ class NanoBananaAdapter(ImageAdapter):
         base_desc = description or f"character id '{char_id}'"
         prompt = (
             f"Generate the same character shown in the reference image, matching art "
-            f"style, proportions, clothing, and features exactly. "
+            f"style, proportions, clothing, pose, and features exactly. "
+            f"Only change the facial expression. "
             f"Expression: {expr_hint}. "
             f"Full-body portrait, 1:2 vertical composition, plain neutral background, "
             f"no text, no watermark. Character: {base_desc}."

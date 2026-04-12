@@ -65,7 +65,7 @@ godot_player/
   Main.tscn               # scene tree: Background, CharLeft/Middle/Right, DialogueBox, audio players
   scripts/
     BundleLoader.gd       # load bundle/ dir, parse JSON, resolve asset paths
-    Main.gd               # parse --bundle arg, load chapter 0, advance on input
+    Main.gd               # parse --bundle arg, load chapters, auto-advance to next at end
 
 tests/
   test_segmenter.py       # CJK detection + segment sizing
@@ -154,7 +154,9 @@ python -m pipeline validate out/short/chapters/ch01.json
 
 **Background Removal:** Character images are automatically matted using ToonOut (fine-tuned BiRefNet trained on 1.2K anime images, 99.5% pixel accuracy). Removes gray placeholder backgrounds without halos or color fringing. Runs on CPU after image generation. Configurable via `CHAR_MATTE` env (`"toonout"` default; `"none"` to disable).
 
-**Image Resizing:** Generated images are resized to fit within target dimensions (600×1200 for chars, 1920×1080 for BGs) while preserving aspect ratio. Oversized dimensions are centered horizontally and anchored at bottom (for characters, so feet align with the stage floor). Transparent/black padding fills unused space.
+**Image Resizing:** Character images are alpha-cropped to their content bounding box after matting, normalizing height across expression variants (which may have different padding). Then resized to fit within 600×1200 while preserving aspect ratio, centered horizontally and anchored at bottom (feet on stage floor). BG images fitted to 1920×1080. Transparent/black padding fills unused space.
+
+**Pose Preservation:** Expression variant prompts explicitly request pose and costume matching to the neutral reference, changing only facial expression. Helps maintain character consistency across variants.
 
 ## Data Model
 

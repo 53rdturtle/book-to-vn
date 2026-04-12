@@ -15,6 +15,8 @@ const BundleLoaderScript = preload("res://scripts/BundleLoader.gd")
 var loader: BundleLoaderScript
 var commands: Array = []
 var idx: int = 0
+var chapter_idx: int = 0
+var chapter_count: int = 0
 var char_slots: Dictionary = {}
 
 const TYPE_CHARS_PER_SEC: float = 45.0
@@ -40,9 +42,8 @@ func _ready() -> void:
         return
 
     loader = BundleLoaderScript.new(bundle_path)
-    var chapter: Dictionary = loader.load_chapter(0)
-    commands = chapter.get("commands", [])
-    _advance_until_say()
+    chapter_count = loader.chapter_files().size()
+    _load_chapter(0)
 
 func _parse_bundle_arg() -> String:
     var args: PackedStringArray = OS.get_cmdline_user_args()
@@ -78,14 +79,27 @@ func _finish_typing() -> void:
     is_typing = false
     dialogue_label.visible_characters = -1
 
+func _load_chapter(ch_idx: int) -> void:
+    chapter_idx = ch_idx
+    idx = 0
+    var chapter: Dictionary = loader.load_chapter(chapter_idx)
+    commands = chapter.get("commands", [])
+    for node in char_slots.values():
+        node.texture = null
+        node.set_meta("char_id", "")
+    _advance_until_say()
+
 func _advance_until_say() -> void:
     while idx < commands.size():
         var cmd: Dictionary = commands[idx]
         idx += 1
         if _apply(cmd):
             return
-    speaker_label.text = ""
-    dialogue_label.text = "[End of chapter]"
+    if chapter_idx + 1 < chapter_count:
+        _load_chapter(chapter_idx + 1)
+    else:
+        speaker_label.text = ""
+        dialogue_label.text = "[End]"
 
 func _apply(cmd: Dictionary) -> bool:
     var t: String = cmd.get("type", "")
