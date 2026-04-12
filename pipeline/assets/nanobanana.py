@@ -95,9 +95,15 @@ def _save_resized(
         img = img.convert("RGBA")
     elif mode == "RGB" and img.mode != "RGB":
         img = img.convert("RGB")
-    img = img.resize(size, Image.LANCZOS)
+    tw, th = size
+    iw, ih = img.size
+    scale = min(tw / iw, th / ih)
+    new_w, new_h = round(iw * scale), round(ih * scale)
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    canvas = Image.new(mode, size, (0, 0, 0, 0) if mode == "RGBA" else (0, 0, 0))
+    canvas.paste(img, ((tw - new_w) // 2, th - new_h), img if mode == "RGBA" else None)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out_path, format="PNG")
+    canvas.save(out_path, format="PNG")
 
 
 class NanoBananaAdapter(ImageAdapter):

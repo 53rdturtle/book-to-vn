@@ -94,7 +94,9 @@ def _segments_signature(segs: list[Segment]) -> list[dict]:
 _ALL_EXPRS = ("neutral", "smile", "sad", "angry", "surprised", "worried", "thinking")
 
 
-def _confirm(message: str) -> None:
+def _confirm(message: str, *, skip: bool = False) -> None:
+    if skip:
+        return
     print(f"\n{message}")
     while True:
         ans = input("Continue? [y/N]: ").strip().lower()
@@ -126,9 +128,11 @@ def _collect_manifests(entries: list[bundle.BundleEntry]) -> tuple[set[str], dic
     return bg_ids, char_exprs
 
 
-def _editable_input(label: str, default: str) -> str:
+def _editable_input(label: str, default: str, *, skip: bool = False) -> str:
     print(f"\n{label}")
     print(f"  Proposed: {default}")
+    if skip:
+        return default
     ans = input("  Accept (enter) or type replacement: ").strip()
     return ans or default
 
@@ -138,6 +142,8 @@ def _run_nanobanana_pipeline(
     entries: list[bundle.BundleEntry],
     cast: dict,
     book_title: str,
+    *,
+    skip_confirm: bool = False,
 ) -> tuple[ImageAdapter, dict, dict]:
     """Execute 3-phase char pipeline + BG proposal. Returns (adapter, visual_descriptions, cast).
 
@@ -186,11 +192,11 @@ def _run_nanobanana_pipeline(
         )
         for cid in chars_needing_desc:
             desc = proposed["characters"].get(cid, "")
-            char_descs[cid] = _editable_input(f"Character '{cid}'", desc)
+            char_descs[cid] = _editable_input(f"Character '{cid}'", desc, skip=skip_confirm)
             cast = cast_mod.set_visual_description(cast, cid, char_descs[cid])
         for bg_id in bgs_needing_desc:
             desc = proposed["backgrounds"].get(bg_id, "")
-            bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc)
+            bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc, skip=skip_confirm)
 
     adapter = NanoBananaAdapter()
 
@@ -201,7 +207,7 @@ def _run_nanobanana_pipeline(
         adapter.generate_baseline(baseline_path)
     print(f"[nanobanana] baseline at: {baseline_path}")
     if major_chars:
-        _confirm("Review the baseline image above. This anchors the art style for all characters.")
+        _confirm("Review the baseline image above. This anchors the art style for all characters.", skip=skip_confirm)
 
     # --- Phase B: basic (neutral) character refs ---
     if major_chars:
@@ -212,7 +218,7 @@ def _run_nanobanana_pipeline(
                 print(f"  - {cid}")
                 adapter.generate_char(cid, "neutral", char_descs.get(cid, ""),
                                       char_out, reference=baseline_path)
-        _confirm("Review the basic character images above. Expression variants will branch from these.")
+        _confirm("Review the basic character images above. Expression variants will branch from these.", skip=skip_confirm)
 
     # --- Phase C: expression variants ---
     for cid in major_chars:
@@ -330,7 +336,8 @@ def _cmd_build(args: argparse.Namespace) -> None:
     if args.image_gen == "nanobanana":
         out_dir.mkdir(parents=True, exist_ok=True)
         image_adapter, visual, cast = _run_nanobanana_pipeline(
-            out_dir, entries, cast, book_title
+            out_dir, entries, cast, book_title,
+            skip_confirm=args.skip_image_gen_confirmation,
         )
 
     bundle.write_bundle_multi(
@@ -361,6 +368,10 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument(
         "--image-gen", choices=["placeholder", "nanobanana"], default="placeholder",
         help="Image generation backend (default: placeholder)",
+    )
+    b.add_argument(
+        "--skip-image-gen-confirmation", action="store_true",
+        help="Auto-accept all image generation confirmations and descriptions",
     )
     b.set_defaults(func=_cmd_build)
 

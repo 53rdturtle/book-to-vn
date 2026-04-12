@@ -91,6 +91,9 @@ python -m pipeline build samples/short.txt -o out/short
 # Build with real Nano Banana 2 (Gemini 3.1 Flash Image) assets
 python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
 
+# Build with NanoBanana, auto-accepting all descriptions and confirmations
+python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana --skip-image-gen-confirmation
+
 # Multi-chapter (Chinese primary, English regression)
 python -m pipeline build samples/multi_zh.txt -o out/multi_zh
 python -m pipeline build samples/multi_en.txt -o out/multi_en
@@ -150,6 +153,8 @@ python -m pipeline validate out/short/chapters/ch01.json
 **Descriptions:** Stored in `cast.json` (`visual_description` field) and reused across chapters. First-appearance descriptions are generated once and persisted.
 
 **Background Removal:** Character images are automatically matted using ToonOut (fine-tuned BiRefNet trained on 1.2K anime images, 99.5% pixel accuracy). Removes gray placeholder backgrounds without halos or color fringing. Runs on CPU after image generation. Configurable via `CHAR_MATTE` env (`"toonout"` default; `"none"` to disable).
+
+**Image Resizing:** Generated images are resized to fit within target dimensions (600×1200 for chars, 1920×1080 for BGs) while preserving aspect ratio. Oversized dimensions are centered horizontally and anchored at bottom (for characters, so feet align with the stage floor). Transparent/black padding fills unused space.
 
 ## Data Model
 
