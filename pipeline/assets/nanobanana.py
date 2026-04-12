@@ -83,8 +83,14 @@ def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _save_resized(img_bytes: bytes, out_path: Path, size: tuple[int, int], mode: str) -> None:
+def _save_resized(
+    img_bytes: bytes, out_path: Path, size: tuple[int, int], mode: str,
+    matte: bool = False,
+) -> None:
     img = Image.open(io.BytesIO(img_bytes))
+    if matte and config.CHAR_MATTE == "toonout":
+        from pipeline.assets.matte import remove_background
+        img = remove_background(img)
     if mode == "RGBA" and img.mode != "RGBA":
         img = img.convert("RGBA")
     elif mode == "RGB" and img.mode != "RGB":
@@ -131,7 +137,7 @@ class NanoBananaAdapter(ImageAdapter):
         if data is None:
             data = _call_image(prompt, aspect_ratio="9:16")
             cache.put_bytes("nanobanana_baseline", key, data)
-        _save_resized(data, out_path, CHAR_SIZE, mode="RGBA")
+        _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
 
     def generate_char(
         self,
@@ -166,4 +172,4 @@ class NanoBananaAdapter(ImageAdapter):
                 contents = prompt
             data = _call_image(contents, aspect_ratio="9:16")
             cache.put_bytes("nanobanana_char", key, data)
-        _save_resized(data, out_path, CHAR_SIZE, mode="RGBA")
+        _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)

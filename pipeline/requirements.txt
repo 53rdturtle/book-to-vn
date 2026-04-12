@@ -6,3 +6,10 @@ python-dotenv>=1.0.0
 soundfile>=0.12.0
 numpy>=1.24.0
 pytest>=8.0.0
+# ToonOut (anime background removal) — only needed with --image-gen nanobanana
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.40.0
+einops>=0.7.0
+kornia>=0.7.0
+timm>=0.9.0
