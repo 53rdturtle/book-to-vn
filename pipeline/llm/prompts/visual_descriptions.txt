@@ -5,6 +5,7 @@ with the exact shape shown below — no prose, no code fences.
 OUTPUT SHAPE:
 {
   "characters": { "<char_id>": "<visual description>", ... },
+  "display_names": { "<char_id>": "<name as it should appear on screen>", ... },
   "backgrounds": { "<bg_id>": "<visual description>", ... }
 }
 
@@ -22,6 +23,10 @@ GUIDANCE:
   (shared style language where appropriate).
 - For backgrounds, describe the scene's setting, lighting, time of day, and
   atmosphere. Assume a wide 16:9 painted VN background aesthetic.
+- For display_names: use the name as it appears in the source text (the IDs
+  may be romanized/pinyin, but the display name should be in the book's
+  original language — Chinese characters for Chinese books, etc.). These are
+  shown verbatim on screen as the speaker label.
 
 BOOK TITLE: {BOOK_TITLE}
 

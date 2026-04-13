@@ -41,3 +41,12 @@ func se_path(id: String) -> String:
 
 func voice_path(clip: String) -> String:
     return "%s/voice/%s" % [root, clip]
+
+func load_cast() -> Dictionary:
+    var txt := FileAccess.get_file_as_string(root + "/cast.json")
+    if txt == "":
+        return {}
+    var parsed: Variant = JSON.parse_string(txt)
+    if not (parsed is Dictionary):
+        return {}
+    return parsed.get("cast", {})

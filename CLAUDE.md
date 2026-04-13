@@ -157,7 +157,7 @@ python -m pipeline validate out/short/chapters/ch01.json
 
 **Caching:** Image cache at `~/.book-to-vn/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
 
-**Descriptions:** Stored in `cast.json` (`visual_description` field) and reused across chapters. First-appearance descriptions are generated once and persisted.
+**Descriptions:** LLM generates both `visual_description` and `display_name` (in the source language, e.g., Chinese characters for Chinese books). Both stored in `cast.json` and reused across chapters. First-appearance descriptions and names are generated once and persisted.
 
 **Background Removal:** Character images are automatically matted using ToonOut (fine-tuned BiRefNet trained on 1.2K anime images, 99.5% pixel accuracy). Removes gray placeholder backgrounds without halos or color fringing. Runs on CPU after image generation. Configurable via `CHAR_MATTE` env (`"toonout"` default; `"none"` to disable).
 
@@ -208,7 +208,6 @@ bundle/
 ## Known Limitations (post-M4)
 
 - **Chapter splitter scale limit:** Heuristics handle well-formatted books cleanly. The Gemini fallback embeds the entire text as numbered lines in the prompt, so inputs beyond ~30k characters may exceed context comfortably. Windowed splitting is a stub — revisit in M5+.
-- **Cast display names are raw IDs:** `cast.json` uses the Gemini-generated speaker ID as `display_name` on first sight. For Chinese input this is usually fine (IDs are Chinese characters); for pinyin'd IDs it looks rough. Future milestone can add a dedicated name field.
 - **Silent TTS stubs:** Voice clips are silent OGGs scaled by text length. Real TTS (M5) behind adapter interface.
 - **Static asset catalog:** `asset_catalog.py` has a fixed set of bg/bgm/se IDs. Future milestones can make this context-dependent (genre, setting).
 - **No inline effects:** `say` commands don't support word-level styling (bold, color, shake). Future milestone adds optional `fx` array with word-offset spans.

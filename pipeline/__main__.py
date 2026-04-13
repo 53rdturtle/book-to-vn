@@ -194,6 +194,9 @@ def _run_nanobanana_pipeline(
             desc = proposed["characters"].get(cid, "")
             char_descs[cid] = _editable_input(f"Character '{cid}'", desc, skip=skip_confirm)
             cast = cast_mod.set_visual_description(cast, cid, char_descs[cid])
+            name = proposed.get("display_names", {}).get(cid, "").strip()
+            if name:
+                cast = cast_mod.set_display_name(cast, cid, name)
         for bg_id in bgs_needing_desc:
             desc = proposed["backgrounds"].get(bg_id, "")
             bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc, skip=skip_confirm)

@@ -13,6 +13,7 @@ const BundleLoaderScript = preload("res://scripts/BundleLoader.gd")
 @onready var dialogue_label: RichTextLabel = $DialogueBox/DialogueText
 
 var loader: BundleLoaderScript
+var cast: Dictionary = {}
 var commands: Array = []
 var idx: int = 0
 var chapter_idx: int = 0
@@ -42,6 +43,7 @@ func _ready() -> void:
         return
 
     loader = BundleLoaderScript.new(bundle_path)
+    cast = loader.load_cast()
     chapter_count = loader.chapter_files().size()
     _load_chapter(0)
 
@@ -132,7 +134,7 @@ func _apply(cmd: Dictionary) -> bool:
                 se_player.stream = stream2
                 se_player.play()
         "say":
-            speaker_label.text = String(cmd.get("speaker", ""))
+            speaker_label.text = _display_name(String(cmd.get("speaker", "")))
             dialogue_label.text = String(cmd.get("text", ""))
             total_chars = dialogue_label.get_total_character_count()
             dialogue_label.visible_characters = 0
@@ -155,6 +157,12 @@ func _set_texture(rect: TextureRect, path: String) -> void:
         push_warning("Failed to load image: " + path)
         return
     rect.texture = ImageTexture.create_from_image(img)
+
+func _display_name(speaker: String) -> String:
+    if speaker == "" or speaker == "narrator":
+        return ""
+    var entry: Dictionary = cast.get(speaker, {})
+    return String(entry.get("display_name", speaker))
 
 func _load_ogg(path: String) -> AudioStreamOggVorbis:
     if path == "" or not FileAccess.file_exists(path):

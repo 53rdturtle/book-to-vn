@@ -61,6 +61,14 @@ def update_from_timeline(cast: dict, timeline: dict, chapter_id: str) -> dict:
     return {"cast": roster}
 
 
+def set_display_name(cast: dict, char_id: str, display_name: str) -> dict:
+    """Return a new cast dict with display_name set for char_id."""
+    roster = {cid: dict(meta) for cid, meta in cast.get("cast", {}).items()}
+    if char_id in roster and display_name:
+        roster[char_id]["display_name"] = display_name
+    return {"cast": roster}
+
+
 def set_visual_description(cast: dict, char_id: str, description: str) -> dict:
     """Return a new cast dict with visual_description set for char_id."""
     roster = {cid: dict(meta) for cid, meta in cast.get("cast", {}).items()}

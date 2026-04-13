@@ -30,12 +30,13 @@ def propose(
     bg_ids: list[str],
     excerpt: str,
 ) -> dict:
-    """Return {"characters": {...}, "backgrounds": {...}}."""
+    """Return {"characters": {...}, "display_names": {...}, "backgrounds": {...}}."""
     if not char_ids and not bg_ids:
-        return {"characters": {}, "backgrounds": {}}
+        return {"characters": {}, "display_names": {}, "backgrounds": {}}
     prompt = _render(book_title, char_ids, bg_ids, excerpt)
     raw = gemini_client.call_gemini_json(prompt, call_type="visual_desc")
     return {
         "characters": dict(raw.get("characters", {})),
+        "display_names": dict(raw.get("display_names", {})),
         "backgrounds": dict(raw.get("backgrounds", {})),
     }
