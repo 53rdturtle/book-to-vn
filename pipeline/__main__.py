@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from pipeline import api_log, asset_catalog, bundle, cache, cast as cast_mod, chapters, config, segmenter
+from pipeline import api_log, asset_catalog, backgrounds as bg_mod, bundle, cache, cast as cast_mod, chapters, config, segmenter
 from pipeline.assets import placeholders
 from pipeline.assets.adapter import ImageAdapter
 from pipeline.assets.placeholders import PlaceholderAdapter
@@ -167,19 +167,28 @@ def _run_nanobanana_pipeline(
         print(f"[nanobanana] minor characters (using placeholder silhouettes): {minor_chars}")
     print(f"[nanobanana] backgrounds to generate: {sorted(bg_ids) or '(none)'}")
 
+    stored_bgs = bg_mod.load(out_dir)
+
     # --- Visual descriptions (LLM proposes, user confirms/edits) ---
     chars_needing_desc = [
         cid for cid in major_chars
         if not roster.get(cid, {}).get("visual_description")
     ]
-    bgs_needing_desc = sorted(bg_ids)
+    bgs_needing_desc = sorted(
+        bid for bid in bg_ids
+        if not bg_mod.get_visual_description(stored_bgs, bid)
+    )
 
     char_descs: dict[str, str] = {
         cid: roster.get(cid, {}).get("visual_description", "")
         for cid in major_chars
         if roster.get(cid, {}).get("visual_description")
     }
-    bg_descs: dict[str, str] = {}
+    bg_descs: dict[str, str] = {
+        bid: bg_mod.get_visual_description(stored_bgs, bid)
+        for bid in bg_ids
+        if bg_mod.get_visual_description(stored_bgs, bid)
+    }
 
     if chars_needing_desc or bgs_needing_desc:
         excerpt = _collect_excerpt(entries)
@@ -200,6 +209,9 @@ def _run_nanobanana_pipeline(
         for bg_id in bgs_needing_desc:
             desc = proposed["backgrounds"].get(bg_id, "")
             bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc, skip=skip_confirm)
+            stored_bgs = bg_mod.set_visual_description(stored_bgs, bg_id, bg_descs[bg_id])
+
+    bg_mod.save(out_dir, stored_bgs)
 
     adapter = NanoBananaAdapter()
 

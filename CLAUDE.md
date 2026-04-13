@@ -40,6 +40,8 @@ pipeline/
   config.py               # env loading, path constants
   api_log.py              # centralized API call logging (token usage, costs)
   cache.py                # stub (M1); content-hash keyed cache (M2+)
+  cast.py                 # persistent character roster (M2+)
+  backgrounds.py          # persistent background descriptions (M4+)
   chapters.py             # single-chapter wrapper (M1); multi-chapter heuristics (M2)
   segmenter.py            # sentence split + merge (CJK-aware: 25–70 / ASCII: 60–180)
   asset_catalog.py        # curated bg/bgm/se ID pools for manifest validation
@@ -157,7 +159,7 @@ python -m pipeline validate out/short/chapters/ch01.json
 
 **Caching:** Image cache at `~/.book-to-vn/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
 
-**Descriptions:** LLM generates both `visual_description` and `display_name` (in the source language, e.g., Chinese characters for Chinese books). Both stored in `cast.json` and reused across chapters. First-appearance descriptions and names are generated once and persisted.
+**Descriptions:** LLM generates both `visual_description` and `display_name` (in the source language, e.g., Chinese characters for Chinese books). Both stored in `cast.json` and reused across chapters. First-appearance descriptions and names are generated once and persisted. Background descriptions are stored in `backgrounds.json` and similarly reused; edit entries in `backgrounds.json` and delete the corresponding PNG to regenerate a BG with a new description.
 
 **Background Removal:** Character images are automatically matted using ToonOut (fine-tuned BiRefNet trained on 1.2K anime images, 99.5% pixel accuracy). Removes gray placeholder backgrounds without halos or color fringing. Runs on CPU after image generation. Configurable via `CHAR_MATTE` env (`"toonout"` default; `"none"` to disable).
 
@@ -196,13 +198,16 @@ Slots: `left`, `middle`, `right` (fixed enum). Expressions: `neutral`, `smile`, 
 ```
 bundle/
   book.json                  # { title, chapters: [...] }
+  cast.json                  # character roster with display names, first chapter, appearance counts (M2+)
+  backgrounds.json           # background visual descriptions, persisted for reuse (M4+)
   chapters/ch01.json         # runtime timeline
   assets/
-    bg/bg_*.png              # 1920×1080 placeholder BGs
-    char/<id>/<expr>.png     # 600×1200 silhouette chars
+    bg/bg_*.png              # 1920×1080 placeholder or NanoBanana BGs
+    char/<id>/<expr>.png     # 600×1200 silhouette chars or NanoBanana images
     bgm/<id>.ogg             # silent 5-sec OGGs
     se/<id>.ogg              # silent 0.8-sec OGGs
   voice/ch01_seg*.ogg        # silent OGGs, length ∝ text length
+  logs/                      # build logs and API call history
 ```
 
 ## Known Limitations (post-M4)

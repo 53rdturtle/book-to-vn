@@ -35,3 +35,4 @@ _cache_env = os.environ.get("BOOK_TO_VN_CACHE_DIR", "").strip()
 CACHE_DIR = Path(_cache_env) if _cache_env else (Path.home() / ".book-to-vn" / "cache")
 
 BUNDLE_CAST_JSON = "cast.json"
+BUNDLE_BACKGROUNDS_JSON = "backgrounds.json"
