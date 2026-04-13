@@ -35,11 +35,11 @@ def _render_timeline_prompt(
     )
 
 
-def call_gemini_json(prompt: str) -> dict:
-    return _call_gemini_json(prompt)
+def call_gemini_json(prompt: str, call_type: str = "unknown") -> dict:
+    return _call_gemini_json(prompt, call_type=call_type)
 
 
-def _call_gemini_json(prompt: str) -> dict:
+def _call_gemini_json(prompt: str, call_type: str = "unknown") -> dict:
     if not config.GEMINI_API_KEY:
         raise GeminiError("GEMINI_API_KEY is not set")
 
@@ -51,13 +51,31 @@ def _call_gemini_json(prompt: str) -> dict:
     last_err: Exception | None = None
     for attempt in range(3):
         try:
+            t0 = time.time()
             resp = client.models.generate_content(
                 model=config.GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(response_mime_type="application/json"),
             )
+            elapsed = time.time() - t0
             text = resp.text or ""
-            return json.loads(text)
+            result = json.loads(text)
+
+            usage = resp.usage_metadata
+            input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+            output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+            from pipeline import api_log
+            api_log.current.record(
+                model=config.GEMINI_MODEL,
+                call_type=call_type,
+                prompt_summary=prompt[:200],
+                response_summary=text[:200],
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                elapsed_s=elapsed,
+            )
+
+            return result
         except Exception as e:
             last_err = e
             if attempt == 2:
@@ -77,7 +95,7 @@ def generate_timeline(
     prompt = _render_timeline_prompt(
         chapter_id, chapter_title, chapter_body, segments, known_cast_text
     )
-    return _call_gemini_json(prompt), prompt
+    return _call_gemini_json(prompt, call_type="timeline"), prompt
 
 
 # --- Chapter splitter fallback --------------------------------------------
@@ -94,7 +112,7 @@ def _render_splitter_prompt(text: str) -> str:
 def split_chapters(text: str) -> list[Chapter]:
     """Gemini-driven chapter split fallback. Returns empty list on failure."""
     prompt = _render_splitter_prompt(text)
-    raw = _call_gemini_json(prompt)
+    raw = _call_gemini_json(prompt, call_type="splitter")
 
     schema = json.loads(config.SPLIT_SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = sorted(Draft202012Validator(schema).iter_errors(raw), key=lambda e: list(e.path))

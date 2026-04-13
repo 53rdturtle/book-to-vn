@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from pipeline import asset_catalog, bundle, cache, cast as cast_mod, chapters, config, segmenter
+from pipeline import api_log, asset_catalog, bundle, cache, cast as cast_mod, chapters, config, segmenter
 from pipeline.assets import placeholders
 from pipeline.assets.adapter import ImageAdapter
 from pipeline.assets.placeholders import PlaceholderAdapter
@@ -217,7 +217,8 @@ def _run_nanobanana_pipeline(
             if not char_out.exists():
                 print(f"  - {cid}")
                 adapter.generate_char(cid, "neutral", char_descs.get(cid, ""),
-                                      char_out, reference=baseline_path)
+                                      char_out, reference=baseline_path,
+                                      style_ref_only=True)
         _confirm("Review the basic character images above. Expression variants will branch from these.", skip=skip_confirm)
 
     # --- Phase C: expression variants ---
@@ -249,6 +250,7 @@ def _run_nanobanana_pipeline(
 
 
 def _cmd_build(args: argparse.Namespace) -> None:
+    api_log.reset()
     text = Path(args.input).read_text(encoding="utf-8")
     chs = chapters.split(text)
     if not chs:
@@ -347,6 +349,7 @@ def _cmd_build(args: argparse.Namespace) -> None:
         visual_descriptions=visual,
     )
     log.summary(len(chs), total_segs)
+    api_log.current.write(out_dir)
     print(f"[pipeline] bundle written to {out_dir.resolve()}")
     print(f"[pipeline] build logs at {(out_dir / 'logs').resolve()}")
 

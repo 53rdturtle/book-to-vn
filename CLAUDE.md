@@ -38,6 +38,7 @@ Visual novel playback
 pipeline/
   __main__.py              # CLI: `python -m pipeline build <txt> -o <bundle>`
   config.py               # env loading, path constants
+  api_log.py              # centralized API call logging (token usage, costs)
   cache.py                # stub (M1); content-hash keyed cache (M2+)
   chapters.py             # single-chapter wrapper (M1); multi-chapter heuristics (M2)
   segmenter.py            # sentence split + merge (CJK-aware: 25–70 / ASCII: 60–180)
@@ -88,8 +89,11 @@ export GEMINI_API_KEY="..."
 # Build a bundle with placeholder assets (default)
 python -m pipeline build samples/short.txt -o out/short
 
-# Build with real Nano Banana 2 (Gemini 3.1 Flash Image) assets
+# Build with real Nano Banana 2 (Gemini 3.1 Flash Image) assets (default 512 resolution)
 python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
+
+# Build with NanoBanana at 1K resolution (higher quality, higher cost)
+NANO_BANANA_IMAGE_SIZE=1K python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
 
 # Build with NanoBanana, auto-accepting all descriptions and confirmations
 python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana --skip-image-gen-confirmation
@@ -134,17 +138,20 @@ python -m pipeline validate out/short/chapters/ch01.json
 
 **Model:** `gemini-3.1-flash-image-preview` (Nano Banana 2, configurable via `NANO_BANANA_MODEL` env).
 
-**Output:** 1K resolution (configurable via `NANO_BANANA_IMAGE_SIZE` env; bump to 2K/4K post-prototyping).
+**Output:** 512 resolution (configurable via `NANO_BANANA_IMAGE_SIZE` env; valid values: `"512"`, `"1K"`, `"2K"`, `"4K"`). Default 512 for cost-efficiency during development.
 
 **Workflow:** `--image-gen nanobanana` triggers 3-phase pipeline:
 1. LLM proposes character/background visual descriptions (leans on knowledge of well-known source works)
 2. User confirms or edits descriptions via stdin
 3. **Phase A:** Generate baseline character (style anchor for entire book)
-4. **Phase B:** Generate basic (neutral) characters using baseline as reference → user confirms
-5. **Phase C:** Generate all expression variants per character (auto)
+4. **Phase B:** Generate basic (neutral) characters using baseline as reference (style reference only; character description applies) → user confirms
+5. **Phase C:** Generate all expression variants per character (match clothing/features; pose may vary per expression)
 6. Generate backgrounds from enriched descriptions
 
-**Character Consistency:** Baseline → basic reference → expression variants via image-to-image.
+**Character Generation Prompts:** Three strategies depending on context:
+- **No reference:** Full character description + expression
+- **Baseline reference (Phase B):** Match baseline art style only; include character description (pose/clothing unconstrained)
+- **Neutral reference (Phase C):** Match clothing/features exactly; expression only changes face (pose may naturalistically vary)
 
 **Major Character Filter:** Only characters with ≥10 appearances (configurable via `MAJOR_CHAR_MIN_APPEARANCES`) receive NanoBanana images. Minor characters fall back to placeholder silhouettes.
 
@@ -156,7 +163,7 @@ python -m pipeline validate out/short/chapters/ch01.json
 
 **Image Resizing:** Character images are alpha-cropped to their content bounding box after matting, normalizing height across expression variants (which may have different padding). Then resized to fit within 600×1200 while preserving aspect ratio, centered horizontally and anchored at bottom (feet on stage floor). BG images fitted to 1920×1080. Transparent/black padding fills unused space.
 
-**Pose Preservation:** Expression variant prompts explicitly request pose and costume matching to the neutral reference, changing only facial expression. Helps maintain character consistency across variants.
+**API Logging:** All Gemini calls logged to `logs/api_calls.json` (structured) and `logs/api_usage.txt` (human-readable summary) with token counts and estimated USD costs.
 
 ## Data Model
 

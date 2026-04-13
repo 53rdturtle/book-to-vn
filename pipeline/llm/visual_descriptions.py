@@ -34,7 +34,7 @@ def propose(
     if not char_ids and not bg_ids:
         return {"characters": {}, "backgrounds": {}}
     prompt = _render(book_title, char_ids, bg_ids, excerpt)
-    raw = gemini_client.call_gemini_json(prompt)
+    raw = gemini_client.call_gemini_json(prompt, call_type="visual_desc")
     return {
         "characters": dict(raw.get("characters", {})),
         "backgrounds": dict(raw.get("backgrounds", {})),
