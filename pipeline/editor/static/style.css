@@ -48,7 +48,8 @@ input[type="text"], textarea, select {
   border-radius: 3px;
   width: 100%;
 }
-textarea { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+textarea { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; resize: vertical; }
+textarea.autosize { min-height: 3.5em; overflow: hidden; }
 button {
   background: #333;
   color: #ddd;

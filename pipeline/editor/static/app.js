@@ -28,8 +28,25 @@ async function refreshBundle() {
 }
 
 // --- build tab ---
+$("#src-file").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  $("#src-text").value = await f.text();
+  const stem = f.name.replace(/\.[^.]+$/, "");
+  if (!$("#bundle-dir").value.trim() && stem) {
+    $("#bundle-dir").value = "out/" + stem;
+  }
+};
+
 $("#start-btn").onclick = async () => {
-  const text = $("#src-text").value;
+  let text = $("#src-text").value;
+  if (!text.trim()) {
+    const f = $("#src-file").files[0];
+    if (f) {
+      text = await f.text();
+      $("#src-text").value = text;
+    }
+  }
   const out_dir = $("#bundle-dir").value.trim();
   const image_gen = $("#image-gen").value;
   const no_cache = $("#no-cache").checked;
@@ -115,16 +132,17 @@ function handleEvent({ type, payload }) {
             <input type="text" data-name="${cid}" value="${escapeHtml(names[cid] || cid)}" />
           </label>
           <label>description
-            <textarea data-char="${cid}" rows="3">${escapeHtml(desc)}</textarea>
+            <textarea data-char="${cid}" class="autosize">${escapeHtml(desc)}</textarea>
           </label>
         </div>`).join("")}
       ${bgs.map(([bid, desc]) => `
         <div style="margin-top:8px">
           <label>bg <code>${bid}</code>
-            <textarea data-bg="${bid}" rows="2">${escapeHtml(desc)}</textarea>
+            <textarea data-bg="${bid}" class="autosize">${escapeHtml(desc)}</textarea>
           </label>
         </div>`).join("")}
       <button class="primary" id="confirm-desc">Confirm descriptions</button>`;
+    autosizeAll(el);
     $("#confirm-desc").onclick = () => {
       const edits = { characters: {}, backgrounds: {}, display_names: {} };
       el.querySelectorAll("[data-char]").forEach((t) => edits.characters[t.dataset.char] = t.value);
@@ -277,7 +295,7 @@ function renderAssets() {
         <img src="/api/asset?bundle=${enc(bundlePath)}&rel=${enc(img.path)}&t=${img.mtime}" />
         <div class="id">${cid}/${img.expr} — ${escapeHtml(name)} (${count}×)</div>
         ${img.expr === "neutral" ? `
-          <textarea data-desc="${cid}" placeholder="description">${escapeHtml(desc)}</textarea>` : ""}
+          <textarea data-desc="${cid}" class="autosize" placeholder="description">${escapeHtml(desc)}</textarea>` : ""}
         <div class="actions">
           <button data-action="regen" data-kind="${img.expr === 'neutral' ? 'char_neutral' : 'char_expr'}" data-id="${cid}" data-expr="${img.expr}">Regen</button>
           ${img.expr === "neutral" ? `<label style="display:inline"><input type="checkbox" data-cascade="${cid}" /> cascade</label>` : ""}
@@ -295,7 +313,7 @@ function renderAssets() {
     html += `<div class="asset-card" data-bgid="${bg.id}">
       <img src="/api/asset?bundle=${enc(bundlePath)}&rel=${enc(bg.path)}&t=${bg.mtime}" />
       <div class="id">${bg.id}</div>
-      <textarea data-bgdesc="${bg.id}" placeholder="description">${escapeHtml(desc)}</textarea>
+      <textarea data-bgdesc="${bg.id}" class="autosize" placeholder="description">${escapeHtml(desc)}</textarea>
       <div class="actions">
         <button data-action="regen" data-kind="bg" data-id="${bg.id}">Regen</button>
         <button data-action="upload" data-kind="bg" data-id="${bg.id}">Upload</button>
@@ -305,6 +323,7 @@ function renderAssets() {
   html += `</div></div>`;
 
   view.innerHTML = html;
+  autosizeAll(view);
 
   view.querySelectorAll('button[data-action="regen"]').forEach((b) => {
     b.onclick = async () => {
@@ -375,6 +394,16 @@ $("#play-btn").onclick = async () => {
 };
 
 // --- utils ---
+function autosizeAll(root) {
+  root.querySelectorAll("textarea.autosize").forEach((t) => {
+    const fit = () => {
+      t.style.height = "auto";
+      t.style.height = t.scrollHeight + "px";
+    };
+    t.addEventListener("input", fit);
+    fit();
+  });
+}
 function enc(s) { return encodeURIComponent(s); }
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => (

@@ -86,6 +86,17 @@ def _run(job: Job) -> None:
 
         _emit(job, "status", message="calling Gemini for timelines")
         entries, cast = steps.generate_timelines(raw, log=log, no_cache=job.no_cache)
+
+        # Merge existing on-disk descriptions/names so rerunning against an
+        # existing bundle dir preserves prior edits.
+        existing_cast = cast_mod.load(out_dir).get("cast", {})
+        fresh_roster = cast.get("cast", {})
+        for cid, meta in fresh_roster.items():
+            prior = existing_cast.get(cid, {})
+            if prior.get("visual_description"):
+                meta["visual_description"] = prior["visual_description"]
+            if prior.get("display_name") and prior["display_name"] != cid:
+                meta["display_name"] = prior["display_name"]
         _emit(job, "timelines_done", chapters=[
             {"id": c.id, "commands": len(t.get("commands", []))}
             for c, _s, t in entries
