@@ -32,6 +32,15 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// --- restart ---
+$("#restart-btn").onclick = async () => {
+  if (!confirm("Restart the editor server?")) return;
+  $("#restart-btn").disabled = true;
+  $("#restart-btn").textContent = "Restarting...";
+  try { await fetch("/api/restart", { method: "POST" }); } catch {}
+  setTimeout(() => { location.reload(); }, 2000);
+};
+
 // --- bundle bar ---
 $("#refresh-bundle").onclick = refreshBundle;
 $("#bundle-dir").addEventListener("change", refreshBundle);

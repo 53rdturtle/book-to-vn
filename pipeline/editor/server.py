@@ -280,6 +280,36 @@ def api_play_status(bundle: str):
     return {"running": rc is None, "exit_code": rc}
 
 
+def _deferred_exit(*, restart: bool = False) -> None:
+    """Shut down (and optionally restart) after a short delay so the HTTP response can flush."""
+    import sys
+    import time
+    import threading
+
+    def _worker():
+        time.sleep(0.5)
+        if restart:
+            subprocess.Popen(
+                [sys.executable, "-m", "pipeline", "editor"],
+                cwd=Path.cwd(),
+            )
+        os._exit(0)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+@app.post("/api/shutdown")
+async def api_shutdown():
+    _deferred_exit(restart=False)
+    return {"ok": True}
+
+
+@app.post("/api/restart")
+async def api_restart():
+    _deferred_exit(restart=True)
+    return {"ok": True}
+
+
 # ---------- static ----------
 
 @app.get("/")
