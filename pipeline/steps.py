@@ -312,7 +312,9 @@ def propose_missing_descriptions(
         if bg_mod.get_visual_description(stored_bgs, bid)
     }
 
-    proposed = {"characters": {}, "display_names": {}, "backgrounds": {}}
+    existing_style = bg_mod.get_visual_style(stored_bgs)
+
+    proposed = {"visual_style": "", "characters": {}, "display_names": {}, "backgrounds": {}}
     if chars_needing or bgs_needing:
         print(f"[descriptions] calling Gemini for {len(chars_needing)} chars + "
               f"{len(bgs_needing)} bgs")
@@ -328,7 +330,10 @@ def propose_missing_descriptions(
     print(f"[descriptions] reused existing chars={sorted(existing_chars.keys())}, "
           f"reused existing bgs={sorted(existing_bgs.keys())}")
 
+    visual_style = existing_style or proposed.get("visual_style", "")
+
     return {
+        "visual_style": visual_style,
         "characters": {**existing_chars, **proposed.get("characters", {})},
         "display_names": {**existing_names, **proposed.get("display_names", {})},
         "backgrounds": {**existing_bgs, **proposed.get("backgrounds", {})},
@@ -343,6 +348,7 @@ def save_descriptions(
     char_descs: dict[str, str],
     bg_descs: dict[str, str],
     display_names: dict[str, str] | None = None,
+    visual_style: str = "",
 ) -> dict:
     """Persist edited descriptions into cast.json and backgrounds.json. Returns updated cast."""
     for cid, desc in char_descs.items():
@@ -353,6 +359,8 @@ def save_descriptions(
                 cast = cast_mod.set_display_name(cast, cid, name)
 
     stored_bgs = bg_mod.load(out_dir)
+    if visual_style:
+        stored_bgs = bg_mod.set_visual_style(stored_bgs, visual_style)
     for bid, desc in bg_descs.items():
         stored_bgs = bg_mod.set_visual_description(stored_bgs, bid, desc)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -363,9 +371,9 @@ def save_descriptions(
 
 # ---------- per-asset generation (idempotent unless force=True) ----------
 
-def _nano_adapter(*, defer_matte: bool = False, on_matte_done=None):
+def _nano_adapter(*, defer_matte: bool = False, on_matte_done=None, style: str | None = None):
     from pipeline.assets.nanobanana import NanoBananaAdapter
-    return NanoBananaAdapter(defer_matte=defer_matte, on_matte_done=on_matte_done)
+    return NanoBananaAdapter(style=style, defer_matte=defer_matte, on_matte_done=on_matte_done)
 
 
 def baseline_path(out_dir: Path) -> Path:

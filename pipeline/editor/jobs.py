@@ -165,6 +165,7 @@ def _run_body(job: Job) -> None:
 
             if job.skip_confirm:
                 job.desc_edits = {
+                    "visual_style": proposed.get("visual_style", ""),
                     "characters": proposed["characters"],
                     "display_names": proposed["display_names"],
                     "backgrounds": proposed["backgrounds"],
@@ -174,19 +175,22 @@ def _run_body(job: Job) -> None:
                 job.desc_gate.wait()
 
             edits = job.desc_edits or {}
+            visual_style = edits.get("visual_style", proposed.get("visual_style", ""))
             char_descs = edits.get("characters", proposed["characters"])
             bg_descs = edits.get("backgrounds", proposed["backgrounds"])
             display_names = edits.get("display_names", proposed["display_names"])
 
             cast = steps.save_descriptions(
                 out_dir, cast, char_descs, bg_descs, display_names,
+                visual_style=visual_style,
             )
 
             def _on_matte_done(path: Path) -> None:
                 _emit(job, "asset_updated", path=str(path),
                       mtime=path.stat().st_mtime if path.exists() else 0)
 
-            adapter = steps._nano_adapter(defer_matte=True, on_matte_done=_on_matte_done)
+            adapter = steps._nano_adapter(defer_matte=True, on_matte_done=_on_matte_done,
+                                          style=visual_style or None)
 
             # Phase A: baseline
             _emit(job, "status", message="generating baseline")

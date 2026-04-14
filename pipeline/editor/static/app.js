@@ -158,8 +158,14 @@ function handleEvent({ type, payload }) {
     const chars = Object.entries(payload.characters || {});
     const bgs = Object.entries(payload.backgrounds || {});
     const names = payload.display_names || {};
+    const styleText = payload.visual_style || "";
     el.querySelector(".body").innerHTML = `
       <div>Edit descriptions below, then click Confirm.</div>
+      ${styleText ? `<div style="margin-top:8px">
+        <label>Visual style (applies to all images)
+          <textarea id="visual-style-input" class="autosize">${escapeHtml(styleText)}</textarea>
+        </label>
+      </div>` : ""}
       ${chars.map(([cid, desc]) => `
         <div style="margin-top:8px">
           <label>char <code>${cid}</code> display name
@@ -179,6 +185,8 @@ function handleEvent({ type, payload }) {
     autosizeAll(el);
     $("#confirm-desc").onclick = () => {
       const edits = { characters: {}, backgrounds: {}, display_names: {} };
+      const styleInput = document.getElementById("visual-style-input");
+      if (styleInput) edits.visual_style = styleInput.value;
       el.querySelectorAll("[data-char]").forEach((t) => edits.characters[t.dataset.char] = t.value);
       el.querySelectorAll("[data-bg]").forEach((t) => edits.backgrounds[t.dataset.bg] = t.value);
       el.querySelectorAll("[data-name]").forEach((t) => edits.display_names[t.dataset.name] = t.value);

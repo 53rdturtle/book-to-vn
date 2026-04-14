@@ -190,6 +190,8 @@ def _run_nanobanana_pipeline(
         if bg_mod.get_visual_description(stored_bgs, bid)
     }
 
+    visual_style = bg_mod.get_visual_style(stored_bgs)
+
     if chars_needing_desc or bgs_needing_desc:
         excerpt = _collect_excerpt(entries)
         print(f"\n[nanobanana] proposing descriptions via {config.GEMINI_MODEL}...")
@@ -199,6 +201,11 @@ def _run_nanobanana_pipeline(
             bg_ids=bgs_needing_desc,
             excerpt=excerpt,
         )
+        if not visual_style:
+            visual_style = proposed.get("visual_style", "")
+            if visual_style:
+                visual_style = _editable_input("Visual style", visual_style, skip=skip_confirm)
+                stored_bgs = bg_mod.set_visual_style(stored_bgs, visual_style)
         for cid in chars_needing_desc:
             desc = proposed["characters"].get(cid, "")
             char_descs[cid] = _editable_input(f"Character '{cid}'", desc, skip=skip_confirm)
@@ -213,7 +220,7 @@ def _run_nanobanana_pipeline(
 
     bg_mod.save(out_dir, stored_bgs)
 
-    adapter = NanoBananaAdapter()
+    adapter = NanoBananaAdapter(style=visual_style or None)
 
     # --- Phase A: baseline character ---
     baseline_path = out_dir / config.BUNDLE_CHAR_DIR / "_baseline" / "neutral.png"

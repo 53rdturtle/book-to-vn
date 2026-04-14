@@ -43,3 +43,11 @@ def set_visual_description(backgrounds: dict, bg_id: str, description: str) -> d
 
 def get_visual_description(backgrounds: dict, bg_id: str) -> str:
     return backgrounds.get("backgrounds", {}).get(bg_id, {}).get("visual_description", "")
+
+
+def get_visual_style(backgrounds: dict) -> str:
+    return backgrounds.get("visual_style", "")
+
+
+def set_visual_style(backgrounds: dict, style: str) -> dict:
+    return {**backgrounds, "visual_style": style}

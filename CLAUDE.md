@@ -128,7 +128,8 @@ python -m pipeline validate out/short/chapters/ch01.json
 # Launch the interactive assets editor (web UI)
 python -m pipeline editor
 # Browser opens at http://127.0.0.1:8765; paste text, set bundle dir, click Start
-# Step through confirmations interactively, edit descriptions inline, regenerate assets, upload overrides, play.
+# Step through confirmations interactively: edit visual style, character/background descriptions inline, 
+# regenerate assets, upload overrides, play.
 
 # Play in Godot (4.6+)
 # Godot binary (directory containing the .exe):
@@ -160,23 +161,23 @@ python -m pipeline editor
 **Output:** 512 resolution (configurable via `NANO_BANANA_IMAGE_SIZE` env; valid values: `"512"`, `"1K"`, `"2K"`, `"4K"`). Default 512 for cost-efficiency during development.
 
 **Workflow:** `--image-gen nanobanana` triggers 3-phase pipeline:
-1. LLM proposes character/background visual descriptions (leans on knowledge of well-known source works)
-2. User confirms or edits descriptions via stdin
-3. **Phase A:** Generate baseline character (style anchor for entire book)
+1. LLM proposes `visual_style` (concise art style description matching book tone/genre) + character/background visual descriptions (leans on knowledge of well-known source works)
+2. User confirms or edits style and descriptions via stdin (CLI) or web UI (editor)
+3. **Phase A:** Generate baseline character (style anchor for entire book, uses proposed visual_style)
 4. **Phase B:** Generate basic (neutral) characters using baseline as reference (style reference only; character description applies) → user confirms
 5. **Phase C:** Generate all expression variants per character (match clothing/features; pose may vary per expression)
 6. Generate backgrounds from enriched descriptions
 
-**Character Generation Prompts:** Three strategies depending on context:
-- **No reference:** Full character description + expression
-- **Baseline reference (Phase B):** Match baseline art style only; include character description (pose/clothing unconstrained)
+**Character Generation Prompts:** All prompts include the proposed `visual_style`. Three strategies depending on context:
+- **No reference:** Visual style + character description + expression
+- **Baseline reference (Phase B):** Visual style + match baseline art style only; character description (pose/clothing unconstrained)
 - **Neutral reference (Phase C):** Match clothing/features exactly; expression only changes face (pose may naturalistically vary)
 
 **Major Character Filter:** Only characters with ≥10 appearances (configurable via `MAJOR_CHAR_MIN_APPEARANCES`) receive NanoBanana images. Minor characters fall back to placeholder silhouettes.
 
 **Caching:** Image cache at `~/.book-to-vn/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
 
-**Descriptions:** LLM generates both `visual_description` and `display_name` (in the source language, e.g., Chinese characters for Chinese books). Both stored in `cast.json` and reused across chapters. First-appearance descriptions and names are generated once and persisted. Background descriptions are stored in `backgrounds.json` and similarly reused; edit entries in `backgrounds.json` and delete the corresponding PNG to regenerate a BG with a new description.
+**Descriptions:** LLM generates `visual_style` (art style for all images), `visual_description` (character/background appearance), and `display_name` (speaker label in source language, e.g., Chinese characters for Chinese books). Visual style is stored in `backgrounds.json` and applies uniformly to baseline, character, and background generation. Character descriptions and names are stored in `cast.json` and reused across chapters. Background descriptions are stored in `backgrounds.json` and similarly reused. Edit any entry and delete the corresponding PNG to regenerate with a new description.
 
 **Background Removal:** Character images are automatically matted using ToonOut (fine-tuned BiRefNet trained on 1.2K anime images, 99.5% pixel accuracy). Removes gray placeholder backgrounds without halos or color fringing. Runs on CPU after image generation. Configurable via `CHAR_MATTE` env (`"toonout"` default; `"none"` to disable).
 
@@ -216,7 +217,7 @@ Slots: `left`, `middle`, `right` (fixed enum). Expressions: `neutral`, `smile`, 
 bundle/
   book.json                  # { title, chapters: [...] }
   cast.json                  # character roster with display names, first chapter, appearance counts (M2+)
-  backgrounds.json           # background visual descriptions, persisted for reuse (M4+)
+  backgrounds.json           # visual_style (art style for all images) + background descriptions, persisted for reuse (M4+)
   chapters/ch01.json         # runtime timeline
   assets/
     bg/bg_*.png              # 1920×1080 placeholder or NanoBanana BGs

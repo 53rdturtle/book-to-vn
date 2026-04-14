@@ -4,12 +4,22 @@ with the exact shape shown below — no prose, no code fences.
 
 OUTPUT SHAPE:
 {
+  "visual_style": "<art style description matching the tone and genre of the source text>",
   "characters": { "<char_id>": "<visual description>", ... },
   "display_names": { "<char_id>": "<name as it should appear on screen>", ... },
   "backgrounds": { "<bg_id>": "<visual description>", ... }
 }
 
 GUIDANCE:
+- For visual_style: propose a concise art style description (1–2 sentences)
+  that matches the tone, genre, and era of the source text. This style will
+  be used as a prefix for ALL image generation prompts (characters and
+  backgrounds alike), so make it concrete and visual — e.g. "soft watercolor
+  anime style with warm muted tones" or "high-contrast cel-shaded manga
+  aesthetic with dark atmospheric lighting". Consider the genre (romance →
+  soft pastels; horror → stark contrasts; wuxia → ink-wash inspired; modern
+  drama → clean digital anime). Do NOT repeat "visual novel" — that context
+  is already provided.
 - The source material is the book titled "{BOOK_TITLE}". If you recognize this
   work, lean on your knowledge of it: describe each character the way the work
   canonically portrays them (age, hair, eyes, build, signature outfit, notable

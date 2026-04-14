@@ -219,6 +219,7 @@ class NanoBananaAdapter(ImageAdapter):
         elif reference and reference.exists() and style_ref_only:
             prompt = (
                 f"Generate a character matching the art style of the reference image. "
+                f"{self.style}. "
                 f"Character: {base_desc}. "
                 f"Expression: {expr_hint}. "
                 f"Full-body portrait, 1:2 vertical composition, plain neutral background, "
@@ -226,7 +227,8 @@ class NanoBananaAdapter(ImageAdapter):
             )
         else:
             prompt = (
-                f"Full-body portrait of {base_desc}. "
+                f"Full-body character portrait, {self.style}. "
+                f"Character: {base_desc}. "
                 f"Expression: {expr_hint}. "
                 f"1:2 vertical composition, plain neutral background, "
                 f"no text, no watermark."
