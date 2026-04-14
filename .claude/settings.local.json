@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ':*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(C:/Users/wssrd/OneDrive/Desktop/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64.exe:*)",
+      "Skill(commit-summary)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "Bash(python:*)",
+      "Bash(/c/Users/wssrd/OneDrive/Desktop/Godot_v4.6.1-stable_win64.exe:*)",
+      "Bash(/c/Users/wssrd/OneDrive/Desktop/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64.exe:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(C:\\\\Users\\\\wssrd\\\\OneDrive\\\\Desktop\\\\Godot_v4.6.1-stable_win64.exe:*)",
+      "Bash(/c/Users/wssrd/OneDrive/Desktop/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe:*)",
+      "WebFetch(domain:aistudio.google.com)",
+      "WebSearch",
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(MAJOR_CHAR_MIN_APPEARANCES=1 python -m pipeline build samples/short.txt -o out/short_nb --image-gen nanobanana)",
+      "WebFetch(domain:jidefr.medium.com)",
+      "WebFetch(domain:www.philschmid.de)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(pip install:*)",
+      "Bash(yes \"\")"
+    ]
+  }
+}

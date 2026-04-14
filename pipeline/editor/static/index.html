@@ -8,11 +8,6 @@
 <body>
 <header>
   <h1>book-to-vn</h1>
-  <nav>
-    <button data-tab="build" class="tab active">Build</button>
-    <button data-tab="assets" class="tab">Assets</button>
-    <button data-tab="play" class="tab">Play</button>
-  </nav>
   <div class="bundle-bar">
     <label>Bundle dir <input id="bundle-dir" type="text" placeholder="out/short" size="40" /></label>
     <button id="refresh-bundle">Refresh</button>
@@ -20,41 +15,36 @@
 </header>
 
 <main>
-  <section id="tab-build" class="tab-panel active">
-    <div class="panel">
-      <h2>Source</h2>
-      <label>Source text (paste or load a .txt)
-        <input type="file" id="src-file" accept=".txt,text/plain" />
-        <textarea id="src-text" rows="12" placeholder="Paste novel / chapter text..."></textarea>
-      </label>
-      <label>Image generation
-        <select id="image-gen">
-          <option value="placeholder">placeholder (fast)</option>
-          <option value="nanobanana" selected>nanobanana (real images)</option>
-        </select>
-      </label>
-      <label><input type="checkbox" id="no-cache" /> Bypass cache</label>
-      <label><input type="checkbox" id="skip-confirm" /> Auto-accept all confirmations</label>
+  <section class="panel">
+    <h2>Source</h2>
+    <label>Source text (paste or load a .txt)
+      <input type="file" id="src-file" accept=".txt,text/plain" />
+      <textarea id="src-text" rows="12" placeholder="Paste novel / chapter text..."></textarea>
+    </label>
+    <label>Image generation
+      <select id="image-gen">
+        <option value="placeholder">placeholder (fast)</option>
+        <option value="nanobanana" selected>nanobanana (real images)</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="no-cache" /> Bypass cache</label>
+    <label><input type="checkbox" id="skip-confirm" /> Auto-accept all confirmations</label>
+    <div class="action-row">
       <button id="start-btn" class="primary">Start pipeline</button>
-    </div>
-
-    <div class="panel" id="timeline">
-      <h2>Progress</h2>
-      <div id="status-line" class="status"></div>
-      <div id="steps"></div>
-    </div>
-  </section>
-
-  <section id="tab-assets" class="tab-panel">
-    <div id="assets-view"></div>
-  </section>
-
-  <section id="tab-play" class="tab-panel">
-    <div class="panel">
-      <h2>Play in Godot</h2>
       <button id="play-btn" class="primary">Play</button>
-      <pre id="play-status"></pre>
+      <span id="play-status"></span>
     </div>
+  </section>
+
+  <section class="panel" id="timeline">
+    <h2>Progress</h2>
+    <div id="status-line" class="status"></div>
+    <div id="steps"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Assets</h2>
+    <div id="assets-view"></div>
   </section>
 </main>
 

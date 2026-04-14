@@ -5,19 +5,12 @@ let currentJob = null;
 let proposedDescriptions = null;
 let bundleState = null;
 
-// --- tab switching ---
-$$(".tab").forEach((b) => {
-  b.onclick = () => {
-    $$(".tab").forEach((x) => x.classList.remove("active"));
-    $$(".tab-panel").forEach((x) => x.classList.remove("active"));
-    b.classList.add("active");
-    $("#tab-" + b.dataset.tab).classList.add("active");
-    if (b.dataset.tab === "assets") refreshBundle();
-  };
-});
-
 // --- bundle bar ---
 $("#refresh-bundle").onclick = refreshBundle;
+$("#bundle-dir").addEventListener("change", refreshBundle);
+window.addEventListener("DOMContentLoaded", () => {
+  if ($("#bundle-dir").value.trim()) refreshBundle();
+});
 
 async function refreshBundle() {
   const path = $("#bundle-dir").value.trim();
@@ -160,70 +153,27 @@ function handleEvent({ type, payload }) {
     return;
   }
   if (type === "awaiting_confirm") {
-    if (payload.step === "baseline") {
-      const el = step("baseline", "Baseline art style");
+    if (payload.step === "baseline" || payload.step === "basic_chars") {
+      const isBaseline = payload.step === "baseline";
+      const el = step(payload.step, isBaseline ? "Baseline art style" : "Basic characters");
       el.classList.add("awaiting");
+      const caption = isBaseline
+        ? "Review the baseline in the Assets panel below, then confirm or regenerate."
+        : "Review basic characters in the Assets panel below, then confirm.";
       el.querySelector(".body").innerHTML = `
-        <img src="/api/asset?bundle=${enc($("#bundle-dir").value)}&rel=assets/char/_baseline/neutral.png&t=${Date.now()}"
-             style="max-width:400px;display:block;" />
-        <div style="margin-top:8px">
-          <button class="primary" id="confirm-baseline">Looks good</button>
-          <button id="regen-baseline">Regenerate</button>
+        <div>${caption}</div>
+        <div class="action-row" style="margin-top:8px">
+          <button class="primary" data-confirm>${isBaseline ? "Looks good" : "Confirm basic chars"}</button>
         </div>`;
-      $("#confirm-baseline").onclick = () => {
+      el.querySelector("[data-confirm]").onclick = () => {
         fetch("/api/confirm/" + currentJob, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step: "baseline" }),
+          body: JSON.stringify({ step: payload.step }),
         });
         el.classList.remove("awaiting"); el.classList.add("done");
+        el.querySelector(".body").innerHTML = `<div>${isBaseline ? "Baseline confirmed." : "Basic characters confirmed."}</div>`;
       };
-      $("#regen-baseline").onclick = async () => {
-        await fetch("/api/regenerate", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bundle: $("#bundle-dir").value, kind: "baseline" }),
-        });
-        el.querySelector("img").src =
-          `/api/asset?bundle=${enc($("#bundle-dir").value)}&rel=assets/char/_baseline/neutral.png&t=${Date.now()}`;
-      };
-      return;
-    }
-    if (payload.step === "basic_chars") {
-      const el = step("basic", "Basic characters");
-      el.classList.add("awaiting");
-      // grab the asset_written events accumulated under neutral; rebuild from bundle list
-      fetch("/api/bundle?path=" + enc($("#bundle-dir").value)).then((r) => r.json()).then((st) => {
-        const entries = Object.entries(st.assets?.char || {});
-        el.querySelector(".body").innerHTML = `
-          <div class="asset-grid">
-            ${entries.map(([cid, imgs]) => {
-              const neutral = imgs.find((i) => i.expr === "neutral");
-              if (!neutral) return "";
-              return `<div class="asset-card">
-                <img src="/api/asset?bundle=${enc($("#bundle-dir").value)}&rel=${enc(neutral.path)}&t=${neutral.mtime}" />
-                <div class="id">${cid}</div>
-                <button data-regen="${cid}">Regenerate</button>
-              </div>`;
-            }).join("")}
-          </div>
-          <button class="primary" id="confirm-basic" style="margin-top:12px">Confirm basic chars</button>`;
-        el.querySelectorAll("[data-regen]").forEach((b) => {
-          b.onclick = async () => {
-            await fetch("/api/regenerate", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ bundle: $("#bundle-dir").value, kind: "char_neutral", id: b.dataset.regen }),
-            });
-            const img = b.parentElement.querySelector("img");
-            img.src = img.src.replace(/&t=\d+/, "&t=" + Date.now());
-          };
-        });
-        $("#confirm-basic").onclick = () => {
-          fetch("/api/confirm/" + currentJob, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ step: "basic_chars" }),
-          });
-          el.classList.remove("awaiting"); el.classList.add("done");
-        };
-      });
+      refreshBundle();
       return;
     }
   }
@@ -245,12 +195,14 @@ function handleEvent({ type, payload }) {
                   payload.kind;
     line.textContent = `✓ ${label}`;
     body.appendChild(line);
+    refreshBundle();
     return;
   }
   if (type === "done") {
     $("#status-line").textContent = "Done. Bundle at: " + payload.out_dir;
     const el = step("done", "Done");
     el.classList.add("done");
+    refreshBundle();
     return;
   }
   if (type === "step_error") {

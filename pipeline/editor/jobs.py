@@ -10,6 +10,7 @@ import queue
 import threading
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -156,11 +157,20 @@ def _run(job: Job) -> None:
                     _emit(job, "awaiting_confirm", step="baseline")
                     job.baseline_gate.wait()
 
-            # Phase B: basic chars
-            for cid in major:
-                _emit(job, "status", message=f"generating {cid} neutral")
+            max_workers = max(1, config.NANO_BANANA_CONCURRENCY)
+
+            # Phase B: basic chars (parallel)
+            def _basic(cid: str):
                 p = steps.gen_basic_char(out_dir, cid, char_descs.get(cid, ""), adapter=adapter)
-                _emit(job, "asset_written", kind="char_neutral", id=cid, path=str(p))
+                return cid, p
+
+            if major:
+                _emit(job, "status",
+                      message=f"generating {len(major)} basic chars (up to {max_workers} in parallel)")
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    for fut in as_completed([ex.submit(_basic, cid) for cid in major]):
+                        cid, p = fut.result()
+                        _emit(job, "asset_written", kind="char_neutral", id=cid, path=str(p))
 
             if major:
                 if job.skip_confirm:
@@ -169,22 +179,43 @@ def _run(job: Job) -> None:
                     _emit(job, "awaiting_confirm", step="basic_chars")
                     job.basic_gate.wait()
 
-            # Phase C: expressions
-            for cid in major:
-                exprs = sorted(char_exprs.get(cid, set()) - {"neutral"})
-                for expr in exprs:
-                    _emit(job, "status", message=f"generating {cid}/{expr}")
-                    p = steps.gen_expression(
-                        out_dir, cid, expr, char_descs.get(cid, ""), adapter=adapter,
-                    )
-                    _emit(job, "asset_written", kind="char_expr",
-                          id=cid, expr=expr, path=str(p))
+            # Phase C: expressions (parallel across all cid/expr pairs)
+            expr_jobs = [
+                (cid, expr)
+                for cid in major
+                for expr in sorted(char_exprs.get(cid, set()) - {"neutral"})
+            ]
 
-            # Backgrounds
-            for bg_id in sorted(bg_ids):
-                _emit(job, "status", message=f"generating bg {bg_id}")
+            def _expr(cid: str, expr: str):
+                p = steps.gen_expression(
+                    out_dir, cid, expr, char_descs.get(cid, ""), adapter=adapter,
+                )
+                return cid, expr, p
+
+            if expr_jobs:
+                _emit(job, "status",
+                      message=f"generating {len(expr_jobs)} expressions (up to {max_workers} in parallel)")
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    futs = [ex.submit(_expr, cid, expr) for cid, expr in expr_jobs]
+                    for fut in as_completed(futs):
+                        cid, expr, p = fut.result()
+                        _emit(job, "asset_written", kind="char_expr",
+                              id=cid, expr=expr, path=str(p))
+
+            # Backgrounds (parallel)
+            bgs = sorted(bg_ids)
+
+            def _bg(bg_id: str):
                 p = steps.gen_bg(out_dir, bg_id, bg_descs.get(bg_id, ""), adapter=adapter)
-                _emit(job, "asset_written", kind="bg", id=bg_id, path=str(p))
+                return bg_id, p
+
+            if bgs:
+                _emit(job, "status",
+                      message=f"generating {len(bgs)} backgrounds (up to {max_workers} in parallel)")
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    for fut in as_completed([ex.submit(_bg, bid) for bid in bgs]):
+                        bg_id, p = fut.result()
+                        _emit(job, "asset_written", kind="bg", id=bg_id, path=str(p))
 
             _emit(job, "status", message="waiting for background removal to finish")
             adapter.drain_matte()

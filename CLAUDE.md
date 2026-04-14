@@ -62,7 +62,7 @@ pipeline/
     server.py             # FastAPI server (SSE events, /api/start, /api/confirm, /api/regenerate, /api/upload, /api/play)
     jobs.py               # in-memory job registry; worker thread drives pipeline, confirmations via threading.Event
     static/
-      index.html          # single-page UI (Build/Assets/Play tabs)
+      index.html          # single-page UI (Source / Progress / Assets panels stacked vertically)
       app.js              # vanilla JS event stream consumer, form handling, asset management
       style.css           # dark theme styling
   tts/
@@ -105,6 +105,9 @@ python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
 
 # Build with NanoBanana at 1K resolution (higher quality, higher cost)
 NANO_BANANA_IMAGE_SIZE=1K python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
+
+# Build with NanoBanana using 4 concurrent image generation threads (default 10)
+NANO_BANANA_CONCURRENCY=4 python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana
 
 # Build with NanoBanana, auto-accepting all descriptions and confirmations
 python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana --skip-image-gen-confirmation
