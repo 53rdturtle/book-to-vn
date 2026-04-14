@@ -13,3 +13,8 @@ transformers>=4.40.0
 einops>=0.7.0
 kornia>=0.7.0
 timm>=0.9.0
+# Editor UI
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9
+

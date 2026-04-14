@@ -36,3 +36,9 @@ CACHE_DIR = Path(_cache_env) if _cache_env else (Path.home() / ".book-to-vn" / "
 
 BUNDLE_CAST_JSON = "cast.json"
 BUNDLE_BACKGROUNDS_JSON = "backgrounds.json"
+
+GODOT_EXE = os.environ.get(
+    "GODOT_EXE",
+    r"C:\Users\wssrd\OneDrive\Desktop\Godot_v4.6.1-stable_win64.exe\Godot_v4.6.1-stable_win64_console.exe",
+)
+EDITOR_PORT = int(os.environ.get("EDITOR_PORT", "8765"))

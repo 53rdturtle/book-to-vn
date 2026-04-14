@@ -369,6 +369,11 @@ def _cmd_build(args: argparse.Namespace) -> None:
     print(f"[pipeline] build logs at {(out_dir / 'logs').resolve()}")
 
 
+def _cmd_editor(args: argparse.Namespace) -> None:
+    from pipeline.editor.server import run as run_editor
+    run_editor(port=args.port, open_browser=not args.no_open)
+
+
 def _cmd_validate(args: argparse.Namespace) -> None:
     timeline = json.loads(Path(args.path).read_text(encoding="utf-8"))
     _validate(timeline, config.SCHEMA_PATH, "Timeline")
@@ -396,6 +401,11 @@ def main(argv: list[str] | None = None) -> None:
     v = sub.add_parser("validate", help="Validate a chapter timeline JSON against the runtime schema")
     v.add_argument("path")
     v.set_defaults(func=_cmd_validate)
+
+    e = sub.add_parser("editor", help="Launch the assets editor web UI")
+    e.add_argument("--port", type=int, default=None, help="Port (default 8765 or $EDITOR_PORT)")
+    e.add_argument("--no-open", action="store_true", help="Don't auto-open a browser")
+    e.set_defaults(func=_cmd_editor)
 
     args = parser.parse_args(argv)
     args.func(args)

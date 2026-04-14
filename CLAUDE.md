@@ -36,8 +36,8 @@ Visual novel playback
 
 ```
 pipeline/
-  __main__.py              # CLI: `python -m pipeline build <txt> -o <bundle>`
-  config.py               # env loading, path constants
+  __main__.py              # CLI: `python -m pipeline build <txt> -o <bundle>` or `editor`
+  config.py               # env loading, path constants (GODOT_EXE, EDITOR_PORT)
   api_log.py              # centralized API call logging (token usage, costs)
   cache.py                # stub (M1); content-hash keyed cache (M2+)
   cast.py                 # persistent character roster (M2+)
@@ -46,6 +46,7 @@ pipeline/
   segmenter.py            # sentence split + merge (CJK-aware: 25–70 / ASCII: 60–180)
   asset_catalog.py        # curated bg/bgm/se ID pools for manifest validation
   bundle.py               # writes bundle/ directory tree
+  steps.py                # discrete pipeline steps (split, timelines, descriptions, asset gen) — reusable by CLI & editor
   llm/
     gemini_client.py      # thin google-genai wrapper, JSON mode, 3× retry
     visual_descriptions.py # LLM-driven character/background visual descriptions (M4)
@@ -56,6 +57,14 @@ pipeline/
     placeholders.py       # PlaceholderAdapter: scan timeline → generate Pillow BGs/chars
     nanobanana.py         # NanoBananaAdapter: Gemini 3.1 Flash Image real image gen (M4)
     matte.py              # ToonOut background removal for character images (anime-specialized BiRefNet fine-tune)
+  editor/
+    __init__.py
+    server.py             # FastAPI server (SSE events, /api/start, /api/confirm, /api/regenerate, /api/upload, /api/play)
+    jobs.py               # in-memory job registry; worker thread drives pipeline, confirmations via threading.Event
+    static/
+      index.html          # single-page UI (Build/Assets/Play tabs)
+      app.js              # vanilla JS event stream consumer, form handling, asset management
+      style.css           # dark theme styling
   tts/
     adapter.py            # abstract TTSAdapter interface
     silent.py             # implements silent OGG generation by text length
@@ -112,6 +121,11 @@ pytest tests/ -v
 
 # Validate a timeline
 python -m pipeline validate out/short/chapters/ch01.json
+
+# Launch the interactive assets editor (web UI)
+python -m pipeline editor
+# Browser opens at http://127.0.0.1:8765; paste text, set bundle dir, click Start
+# Step through confirmations interactively, edit descriptions inline, regenerate assets, upload overrides, play.
 
 # Play in Godot (4.6+)
 # Godot binary (directory containing the .exe):
@@ -222,7 +236,7 @@ bundle/
 - **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
 - **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache at `~/.book-to-vn/cache` (override with `BOOK_TO_VN_CACHE_DIR`). Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
 - **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (30 tests via pytest).
-- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing.
+- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing. **Assets editor (M4.5):** Web UI (`python -m pipeline editor`) for step-by-step builds with in-browser confirmation, inline description editing, per-asset regeneration with cascade, manual image upload overrides, and integrated Godot playback.
 - **M5 (next):** Real TTS. Per-character voice assignment.
 - **M6:** BGM/SE library. Mood-based selection.
 - **M7:** Polish. Save/load, backlog, text speed, skip read. Standalone export.
