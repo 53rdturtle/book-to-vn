@@ -7,6 +7,7 @@ OUTPUT SHAPE:
   "visual_style": "<art style description matching the tone and genre of the source text>",
   "characters": { "<char_id>": "<visual description>", ... },
   "display_names": { "<char_id>": "<name as it should appear on screen>", ... },
+  "minor_silhouettes": { "<char_id>": "<silhouette_type>", ... },
   "backgrounds": { "<bg_id>": "<visual description>", ... }
 }
 
@@ -37,11 +38,19 @@ GUIDANCE:
   may be romanized/pinyin, but the display name should be in the book's
   original language — Chinese characters for Chinese books, etc.). These are
   shown verbatim on screen as the speaker label.
+- For minor_silhouettes: classify each minor character listed below by
+  silhouette_type. Valid values are exactly: "adult_male", "adult_female",
+  "child_male", "child_female", "elder_male", "elder_female". Pick the one
+  that best matches the character based on the excerpt and your knowledge of
+  the source work. If unsure, default to "adult_male" or "adult_female".
 
 BOOK TITLE: {BOOK_TITLE}
 
 CHARACTER IDs (propose one description for each):
 {CHARACTERS}
+
+MINOR CHARACTER IDs (classify each by silhouette_type only — no full description):
+{MINOR_CHARACTERS}
 
 BACKGROUND IDs (propose one description for each):
 {BACKGROUNDS}

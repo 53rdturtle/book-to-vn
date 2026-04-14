@@ -160,6 +160,7 @@ def _run_body(job: Job) -> None:
             _emit(job, "status", message="proposing descriptions via Gemini")
             proposed = steps.propose_missing_descriptions(
                 out_dir, entries, cast, book_title, major, bg_ids,
+                minor_chars=minor,
             )
             _emit(job, "descriptions_proposed", **proposed)
 
@@ -179,10 +180,12 @@ def _run_body(job: Job) -> None:
             char_descs = edits.get("characters", proposed["characters"])
             bg_descs = edits.get("backgrounds", proposed["backgrounds"])
             display_names = edits.get("display_names", proposed["display_names"])
+            minor_silhouettes = proposed.get("minor_silhouettes", {})
 
             cast = steps.save_descriptions(
                 out_dir, cast, char_descs, bg_descs, display_names,
                 visual_style=visual_style,
+                minor_silhouettes=minor_silhouettes,
             )
 
             def _on_matte_done(path: Path) -> None:
@@ -266,9 +269,9 @@ def _run_body(job: Job) -> None:
             _emit(job, "status", message="waiting for background removal to finish")
             adapter.drain_matte()
 
-            image_adapter = PlaceholderAdapter()
+            image_adapter = PlaceholderAdapter(cast=cast)
         else:
-            image_adapter = PlaceholderAdapter()
+            image_adapter = PlaceholderAdapter(cast=cast)
 
         _emit(job, "status", message="writing bundle")
         steps.write_bundle(

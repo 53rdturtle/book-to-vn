@@ -254,12 +254,13 @@ def propose_missing_descriptions(
     book_title: str,
     major_chars: list[str],
     bg_ids: set[str],
+    minor_chars: list[str] | None = None,
 ) -> dict:
     """Propose char/bg descriptions for the ones that aren't yet saved.
 
-    Returns ``{"characters": {...}, "display_names": {...}, "backgrounds": {...}}``
-    filled only for entries that were missing. Existing descriptions are
-    folded into the result so callers get a complete picture.
+    Returns ``{"characters": {...}, "display_names": {...}, "backgrounds": {...},
+    "minor_silhouettes": {...}}`` filled only for entries that were missing.
+    Existing descriptions are folded into the result so callers get a complete picture.
     """
     roster = cast.get("cast", {})
     stored_cast = cast_mod.load(out_dir).get("cast", {})
@@ -287,8 +288,14 @@ def propose_missing_descriptions(
         bid for bid in bg_ids
         if not bg_mod.get_visual_description(stored_bgs, bid)
     )
+    minors_needing = [
+        cid for cid in (minor_chars or [])
+        if not (roster.get(cid, {}).get("silhouette_type")
+                or stored_cast.get(cid, {}).get("silhouette_type"))
+    ]
     print(f"[descriptions] chars_needing (will query Gemini)={chars_needing}")
     print(f"[descriptions] bgs_needing (will query Gemini)={bgs_needing}")
+    print(f"[descriptions] minors_needing silhouette classification={minors_needing}")
 
     existing_chars: dict[str, str] = {}
     for cid in major_chars:
@@ -314,16 +321,18 @@ def propose_missing_descriptions(
 
     existing_style = bg_mod.get_visual_style(stored_bgs)
 
-    proposed = {"visual_style": "", "characters": {}, "display_names": {}, "backgrounds": {}}
-    if chars_needing or bgs_needing:
+    proposed = {"visual_style": "", "characters": {}, "display_names": {},
+                "minor_silhouettes": {}, "backgrounds": {}}
+    if chars_needing or bgs_needing or minors_needing:
         print(f"[descriptions] calling Gemini for {len(chars_needing)} chars + "
-              f"{len(bgs_needing)} bgs")
+              f"{len(bgs_needing)} bgs + {len(minors_needing)} minor classifications")
         excerpt = collect_excerpt(entries)
         proposed = visual_descriptions.propose(
             book_title=book_title,
             char_ids=chars_needing,
             bg_ids=bgs_needing,
             excerpt=excerpt,
+            minor_char_ids=minors_needing,
         )
     else:
         print(f"[descriptions] nothing needed — skipping Gemini call entirely")
@@ -332,10 +341,19 @@ def propose_missing_descriptions(
 
     visual_style = existing_style or proposed.get("visual_style", "")
 
+    existing_silhouettes = {
+        cid: (roster.get(cid, {}).get("silhouette_type")
+              or stored_cast.get(cid, {}).get("silhouette_type"))
+        for cid in (minor_chars or [])
+        if (roster.get(cid, {}).get("silhouette_type")
+            or stored_cast.get(cid, {}).get("silhouette_type"))
+    }
+
     return {
         "visual_style": visual_style,
         "characters": {**existing_chars, **proposed.get("characters", {})},
         "display_names": {**existing_names, **proposed.get("display_names", {})},
+        "minor_silhouettes": {**existing_silhouettes, **proposed.get("minor_silhouettes", {})},
         "backgrounds": {**existing_bgs, **proposed.get("backgrounds", {})},
         "chars_needing": chars_needing,
         "bgs_needing": bgs_needing,
@@ -349,6 +367,7 @@ def save_descriptions(
     bg_descs: dict[str, str],
     display_names: dict[str, str] | None = None,
     visual_style: str = "",
+    minor_silhouettes: dict[str, str] | None = None,
 ) -> dict:
     """Persist edited descriptions into cast.json and backgrounds.json. Returns updated cast."""
     for cid, desc in char_descs.items():
@@ -357,6 +376,9 @@ def save_descriptions(
         for cid, name in display_names.items():
             if name:
                 cast = cast_mod.set_display_name(cast, cid, name)
+    if minor_silhouettes:
+        for cid, stype in minor_silhouettes.items():
+            cast = cast_mod.set_silhouette_type(cast, cid, stype)
 
     stored_bgs = bg_mod.load(out_dir)
     if visual_style:
@@ -458,7 +480,7 @@ def write_bundle(
     bundle.write_bundle_multi(
         out_dir, entries, cast,
         book_title=book_title,
-        image_adapter=image_adapter or PlaceholderAdapter(),
+        image_adapter=image_adapter or PlaceholderAdapter(cast=cast),
         visual_descriptions={
             "characters": char_descs or {},
             "backgrounds": bg_descs or {},

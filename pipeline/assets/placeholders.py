@@ -1,4 +1,5 @@
 import hashlib
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -8,6 +9,9 @@ from pipeline.assets.adapter import ImageAdapter
 
 BG_SIZE = (1920, 1080)
 CHAR_SIZE = (600, 1200)
+
+_SHARED_POOL_DIR = Path(__file__).resolve().parent / "shared_pool"
+_DEFAULT_SILHOUETTE = "adult_male"
 
 
 @dataclass
@@ -74,7 +78,19 @@ def generate_char(char_id: str, expr: str, out_path: Path) -> None:
     img.save(out_path, format="PNG")
 
 
+def _copy_shared_silhouette(silhouette_type: str, out_path: Path) -> bool:
+    src = _SHARED_POOL_DIR / f"{silhouette_type}.png"
+    if src.exists():
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, out_path)
+        return True
+    return False
+
+
 class PlaceholderAdapter(ImageAdapter):
+    def __init__(self, cast: dict | None = None):
+        self._roster = (cast or {}).get("cast", {})
+
     def generate_bg(self, bg_id: str, description: str, out_path: Path) -> None:
         generate_bg(bg_id, out_path)
 
@@ -86,4 +102,9 @@ class PlaceholderAdapter(ImageAdapter):
         out_path: Path,
         reference: Path | None = None,
     ) -> None:
+        stype = self._roster.get(char_id, {}).get("silhouette_type")
+        if stype and _copy_shared_silhouette(stype, out_path):
+            return
+        if _copy_shared_silhouette(_DEFAULT_SILHOUETTE, out_path):
+            return
         generate_char(char_id, expr, out_path)

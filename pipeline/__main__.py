@@ -192,7 +192,12 @@ def _run_nanobanana_pipeline(
 
     visual_style = bg_mod.get_visual_style(stored_bgs)
 
-    if chars_needing_desc or bgs_needing_desc:
+    minors_needing_sil = [
+        cid for cid in minor_chars
+        if not roster.get(cid, {}).get("silhouette_type")
+    ]
+
+    if chars_needing_desc or bgs_needing_desc or minors_needing_sil:
         excerpt = _collect_excerpt(entries)
         print(f"\n[nanobanana] proposing descriptions via {config.GEMINI_MODEL}...")
         proposed = visual_descriptions.propose(
@@ -200,6 +205,7 @@ def _run_nanobanana_pipeline(
             char_ids=chars_needing_desc,
             bg_ids=bgs_needing_desc,
             excerpt=excerpt,
+            minor_char_ids=minors_needing_sil,
         )
         if not visual_style:
             visual_style = proposed.get("visual_style", "")
@@ -217,6 +223,9 @@ def _run_nanobanana_pipeline(
             desc = proposed["backgrounds"].get(bg_id, "")
             bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc, skip=skip_confirm)
             stored_bgs = bg_mod.set_visual_description(stored_bgs, bg_id, bg_descs[bg_id])
+        for cid, stype in proposed.get("minor_silhouettes", {}).items():
+            cast = cast_mod.set_silhouette_type(cast, cid, stype)
+            print(f"[nanobanana] minor '{cid}' → silhouette: {stype}")
 
     bg_mod.save(out_dir, stored_bgs)
 
@@ -268,7 +277,7 @@ def _run_nanobanana_pipeline(
     # For the final bundle write, route minor chars through placeholder.
     # Major chars already have files on disk and bundle.py skips existing files.
     visual = {"characters": char_descs, "backgrounds": bg_descs}
-    return PlaceholderAdapter(), visual, cast
+    return PlaceholderAdapter(cast=cast), visual, cast
 
 
 def _cmd_build(args: argparse.Namespace) -> None:

@@ -12,13 +12,28 @@ from pipeline.llm import gemini_client
 _PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "visual_descriptions.txt"
 
 
-def _render(book_title: str, char_ids: list[str], bg_ids: list[str], excerpt: str) -> str:
+VALID_SILHOUETTE_TYPES = {
+    "adult_male", "adult_female",
+    "child_male", "child_female",
+    "elder_male", "elder_female",
+}
+
+
+def _render(
+    book_title: str,
+    char_ids: list[str],
+    bg_ids: list[str],
+    excerpt: str,
+    minor_char_ids: list[str] | None = None,
+) -> str:
     template = _PROMPT_PATH.read_text(encoding="utf-8")
     chars = "\n".join(f"- {c}" for c in char_ids) or "(none)"
+    minors = "\n".join(f"- {c}" for c in (minor_char_ids or [])) or "(none)"
     bgs = "\n".join(f"- {b}" for b in bg_ids) or "(none)"
     return (
         template.replace("{BOOK_TITLE}", book_title)
         .replace("{CHARACTERS}", chars)
+        .replace("{MINOR_CHARACTERS}", minors)
         .replace("{BACKGROUNDS}", bgs)
         .replace("{EXCERPT}", excerpt)
     )
@@ -29,15 +44,25 @@ def propose(
     char_ids: list[str],
     bg_ids: list[str],
     excerpt: str,
+    minor_char_ids: list[str] | None = None,
 ) -> dict:
-    """Return {"visual_style": str, "characters": {...}, "display_names": {...}, "backgrounds": {...}}."""
-    if not char_ids and not bg_ids:
-        return {"visual_style": "", "characters": {}, "display_names": {}, "backgrounds": {}}
-    prompt = _render(book_title, char_ids, bg_ids, excerpt)
+    """Return {"visual_style": str, "characters": {...}, "display_names": {...},
+    "minor_silhouettes": {...}, "backgrounds": {...}}."""
+    if not char_ids and not bg_ids and not minor_char_ids:
+        return {"visual_style": "", "characters": {}, "display_names": {},
+                "minor_silhouettes": {}, "backgrounds": {}}
+    prompt = _render(book_title, char_ids, bg_ids, excerpt, minor_char_ids)
     raw = gemini_client.call_gemini_json(prompt, call_type="visual_desc")
+    minor_sil = {}
+    for cid, stype in raw.get("minor_silhouettes", {}).items():
+        if stype in VALID_SILHOUETTE_TYPES:
+            minor_sil[cid] = stype
+        else:
+            minor_sil[cid] = "adult_male"
     return {
         "visual_style": str(raw.get("visual_style", "")),
         "characters": dict(raw.get("characters", {})),
         "display_names": dict(raw.get("display_names", {})),
+        "minor_silhouettes": minor_sil,
         "backgrounds": dict(raw.get("backgrounds", {})),
     }

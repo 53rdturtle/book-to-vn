@@ -77,6 +77,14 @@ def set_visual_description(cast: dict, char_id: str, description: str) -> dict:
     return {"cast": roster}
 
 
+def set_silhouette_type(cast: dict, char_id: str, silhouette_type: str) -> dict:
+    """Return a new cast dict with silhouette_type set for char_id."""
+    roster = {cid: dict(meta) for cid, meta in cast.get("cast", {}).items()}
+    if char_id in roster:
+        roster[char_id]["silhouette_type"] = silhouette_type
+    return {"cast": roster}
+
+
 def render_known_cast(cast: dict) -> str:
     """Format cast as a bullet list for injection into the timeline prompt."""
     roster = cast.get("cast", {})

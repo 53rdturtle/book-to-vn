@@ -216,7 +216,7 @@ Slots: `left`, `middle`, `right` (fixed enum). Expressions: `neutral`, `smile`, 
 ```
 bundle/
   book.json                  # { title, chapters: [...] }
-  cast.json                  # character roster with display names, first chapter, appearance counts (M2+)
+  cast.json                  # character roster with display names, first chapter, appearance counts, visual descriptions (M2+), silhouette types for minor chars (M4+)
   backgrounds.json           # visual_style (art style for all images) + background descriptions, persisted for reuse (M4+)
   chapters/ch01.json         # runtime timeline
   assets/
@@ -240,7 +240,7 @@ bundle/
 - **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
 - **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache at `~/.book-to-vn/cache` (override with `BOOK_TO_VN_CACHE_DIR`). Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
 - **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (30 tests via pytest).
-- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing. **Assets editor (M4.5):** Web UI (`python -m pipeline editor`) for step-by-step builds with in-browser confirmation, inline description editing, per-asset regeneration with cascade, manual image upload overrides, and integrated Godot playback.
+- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing. **Minor character silhouette pool:** Characters < 10 appearances are classified by LLM (gender/age: adult/child/elder × male/female) and assigned pre-matted silhouettes from `pipeline/assets/shared_pool/`. **Assets editor (M4.5):** Web UI (`python -m pipeline editor`) for step-by-step builds with in-browser confirmation, inline description editing, per-asset regeneration with cascade, manual image upload overrides, and integrated Godot playback.
 - **M5 (next):** Real TTS. Per-character voice assignment.
 - **M6:** BGM/SE library. Mood-based selection.
 - **M7:** Polish. Save/load, backlog, text speed, skip read. Standalone export.
@@ -251,3 +251,4 @@ bundle/
 - **Segments are immutable per build:** Once written to `voice/` and `chapters/`, segment IDs and text don't change. Makes caching safe.
 - **Godot loads external assets at runtime:** Uses `Image.load_from_file()` for PNG and `AudioStreamOggVorbis.load_from_file()` for OGG. Both work on 4.6+. Paths must resolve from the bundle root.
 - **Command dispatch in Godot is single-threaded:** `TimelinePlayer` steps through commands sequentially, advancing only on user input (space/enter/click). Voice clips play while dialogue is on screen; BGM fades persist across advances.
+- **Editor debug output:** The user reads debug/log output from the editor Web UI (SSE `debug` events), not from the terminal. `print()` inside the worker thread in `jobs.py` and any code it calls (e.g. `steps.py`) is captured via `redirect_stdout` and displayed in the browser.
