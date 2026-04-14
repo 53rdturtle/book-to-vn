@@ -333,9 +333,9 @@ def save_descriptions(
 
 # ---------- per-asset generation (idempotent unless force=True) ----------
 
-def _nano_adapter():
+def _nano_adapter(*, defer_matte: bool = False, on_matte_done=None):
     from pipeline.assets.nanobanana import NanoBananaAdapter
-    return NanoBananaAdapter()
+    return NanoBananaAdapter(defer_matte=defer_matte, on_matte_done=on_matte_done)
 
 
 def baseline_path(out_dir: Path) -> Path:

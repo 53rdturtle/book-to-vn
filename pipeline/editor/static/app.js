@@ -227,6 +227,14 @@ function handleEvent({ type, payload }) {
       return;
     }
   }
+  if (type === "asset_updated") {
+    document.querySelectorAll("img").forEach((img) => {
+      if (img.src.includes(payload.path.split(/[\\/]/).pop())) {
+        img.src = img.src.replace(/&t=\d+/, "&t=" + (payload.mtime * 1000 | 0));
+      }
+    });
+    return;
+  }
   if (type === "asset_written") {
     const el = step("assets", "Assets generated");
     const body = el.querySelector(".body");

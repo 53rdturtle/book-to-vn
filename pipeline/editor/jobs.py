@@ -139,7 +139,11 @@ def _run(job: Job) -> None:
                 out_dir, cast, char_descs, bg_descs, display_names,
             )
 
-            adapter = steps._nano_adapter()
+            def _on_matte_done(path: Path) -> None:
+                _emit(job, "asset_updated", path=str(path),
+                      mtime=path.stat().st_mtime if path.exists() else 0)
+
+            adapter = steps._nano_adapter(defer_matte=True, on_matte_done=_on_matte_done)
 
             # Phase A: baseline
             _emit(job, "status", message="generating baseline")
@@ -181,6 +185,9 @@ def _run(job: Job) -> None:
                 _emit(job, "status", message=f"generating bg {bg_id}")
                 p = steps.gen_bg(out_dir, bg_id, bg_descs.get(bg_id, ""), adapter=adapter)
                 _emit(job, "asset_written", kind="bg", id=bg_id, path=str(p))
+
+            _emit(job, "status", message="waiting for background removal to finish")
+            adapter.drain_matte()
 
             image_adapter = PlaceholderAdapter()
         else:

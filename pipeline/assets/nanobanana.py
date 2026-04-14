@@ -6,6 +6,8 @@ expressions and chapters.
 """
 import hashlib
 import io
+import os
+import threading
 import time
 from pathlib import Path
 
@@ -127,8 +129,33 @@ def _save_resized(
 
 
 class NanoBananaAdapter(ImageAdapter):
-    def __init__(self, style: str | None = None) -> None:
+    def __init__(self, style: str | None = None, *, defer_matte: bool = False,
+                 on_matte_done=None) -> None:
         self.style = style or config.IMAGE_GEN_STYLE
+        self.defer_matte = defer_matte
+        self.on_matte_done = on_matte_done
+        self._matte_threads: list[threading.Thread] = []
+
+    def _matte_later(self, img_bytes: bytes, out_path: Path) -> None:
+        """Write the final matted PNG atomically; safe if ref readers race."""
+        def _worker():
+            try:
+                tmp = out_path.with_name(out_path.name + ".matting.tmp")
+                _save_resized(img_bytes, tmp, CHAR_SIZE, mode="RGBA", matte=True)
+                os.replace(tmp, out_path)
+                if self.on_matte_done:
+                    self.on_matte_done(out_path)
+            except Exception as e:  # noqa: BLE001
+                print(f"[nanobanana] deferred matte failed for {out_path}: {e}")
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        self._matte_threads.append(t)
+
+    def drain_matte(self) -> None:
+        """Block until all deferred matte jobs finish."""
+        for t in self._matte_threads:
+            t.join()
+        self._matte_threads.clear()
 
     # -- Backgrounds -----------------------------------------------------
 
@@ -163,7 +190,11 @@ class NanoBananaAdapter(ImageAdapter):
         if data is None:
             data = _call_image(prompt, aspect_ratio="9:16", call_type="image_baseline")
             cache.put_bytes("nanobanana_baseline", key, data)
-        _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
+        if self.defer_matte:
+            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=False)
+            self._matte_later(data, out_path)
+        else:
+            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
 
     def generate_char(
         self,
@@ -216,4 +247,8 @@ class NanoBananaAdapter(ImageAdapter):
                 contents = prompt
             data = _call_image(contents, aspect_ratio="9:16", call_type="image_char")
             cache.put_bytes("nanobanana_char", key, data)
-        _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
+        if self.defer_matte:
+            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=False)
+            self._matte_later(data, out_path)
+        else:
+            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
