@@ -52,6 +52,52 @@ button:hover { background: #444; }
 button.primary { background: #f4b942; color: #1a1a1a; border-color: #f4b942; font-weight: bold; }
 button.primary:hover { background: #ffcc55; }
 .status { font-family: ui-monospace, monospace; color: #8bc34a; min-height: 1.2em; margin-bottom: 10px; }
+.status-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+  background: #222;
+  border: 1px solid #f4b942;
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 60vw;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+.status-bar[hidden] { display: none; }
+.status-bar .status { margin-bottom: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55vw; }
+.status-bar.done { border-color: #8bc34a; }
+.status-bar.error { border-color: #e53935; }
+.status-bar.error .status { color: #e53935; }
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #444;
+  border-top-color: #f4b942;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.status-bar.awaiting { border-color: #f4b942; }
+.status-bar.awaiting .spinner {
+  animation: none;
+  border: none;
+  width: auto;
+  height: auto;
+  font-size: 15px;
+  font-weight: bold;
+  color: #f4b942;
+  line-height: 1;
+}
+.status-bar.awaiting .spinner::after { content: "!"; }
+.status-bar.awaiting .status { color: #f4b942; }
+.status-bar.done .spinner,
+.status-bar.error .spinner { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .step {
   background: #1a1a1a;
   border: 1px solid #333;

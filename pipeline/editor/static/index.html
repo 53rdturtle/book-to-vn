@@ -38,7 +38,6 @@
 
   <section class="panel" id="timeline">
     <h2>Progress</h2>
-    <div id="status-line" class="status"></div>
     <div id="steps"></div>
   </section>
 
@@ -59,6 +58,10 @@
   </section>
 </main>
 
+<div id="status-bar" class="status-bar" hidden>
+  <span id="status-spinner" class="spinner"></span>
+  <span id="status-line" class="status"></span>
+</div>
 <div id="lightbox" class="lightbox" hidden><img id="lightbox-img" alt="" /></div>
 <script src="/static/app.js"></script>
 </body>

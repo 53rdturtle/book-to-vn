@@ -5,6 +5,15 @@ let currentJob = null;
 let proposedDescriptions = null;
 let bundleState = null;
 
+function setStatus(message, state) {
+  const bar = $("#status-bar");
+  $("#status-line").textContent = message;
+  bar.hidden = false;
+  bar.classList.toggle("done", state === "done");
+  bar.classList.toggle("error", state === "error");
+  bar.classList.toggle("awaiting", state === "awaiting");
+}
+
 // --- lightbox ---
 document.addEventListener("click", (e) => {
   const img = e.target.closest(".asset-card img");
@@ -65,7 +74,7 @@ $("#start-btn").onclick = async () => {
   if (!text.trim()) { alert("Source text is required"); return; }
   if (!out_dir) { alert("Bundle dir is required"); return; }
   $("#steps").innerHTML = "";
-  $("#status-line").textContent = "starting...";
+  setStatus("starting...", "running");
   const r = await fetch("/api/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -113,7 +122,7 @@ function handleEvent({ type, payload }) {
   }
   if (type === "status") {
     appendDebug("[status] " + payload.message);
-    $("#status-line").textContent = payload.message;
+    setStatus(payload.message, "running");
     return;
   }
   if (type === "split_done") {
@@ -145,6 +154,7 @@ function handleEvent({ type, payload }) {
     proposedDescriptions = payload;
     const el = step("descriptions", "Descriptions");
     el.classList.add("awaiting");
+    setStatus("Awaiting description confirmation", "awaiting");
     const chars = Object.entries(payload.characters || {});
     const bgs = Object.entries(payload.backgrounds || {});
     const names = payload.display_names || {};
@@ -179,6 +189,7 @@ function handleEvent({ type, payload }) {
       });
       el.classList.remove("awaiting");
       el.classList.add("done");
+      setStatus("Descriptions confirmed, continuing...", "running");
       el.querySelector(".body").innerHTML = "Descriptions saved.";
     };
     return;
@@ -188,6 +199,7 @@ function handleEvent({ type, payload }) {
       const isBaseline = payload.step === "baseline";
       const el = step(payload.step, isBaseline ? "Baseline art style" : "Basic characters");
       el.classList.add("awaiting");
+      setStatus(isBaseline ? "Awaiting baseline confirmation" : "Awaiting basic chars confirmation", "awaiting");
       const caption = isBaseline
         ? "Review the baseline in the Assets panel below, then confirm or regenerate."
         : "Review basic characters in the Assets panel below, then confirm.";
@@ -202,6 +214,7 @@ function handleEvent({ type, payload }) {
           body: JSON.stringify({ step: payload.step }),
         });
         el.classList.remove("awaiting"); el.classList.add("done");
+        setStatus(isBaseline ? "Baseline confirmed, continuing..." : "Basic chars confirmed, continuing...", "running");
         el.querySelector(".body").innerHTML = `<div>${isBaseline ? "Baseline confirmed." : "Basic characters confirmed."}</div>`;
       };
       refreshBundle();
@@ -230,14 +243,14 @@ function handleEvent({ type, payload }) {
     return;
   }
   if (type === "done") {
-    $("#status-line").textContent = "Done. Bundle at: " + payload.out_dir;
+    setStatus("Done. Bundle at: " + payload.out_dir, "done");
     const el = step("done", "Done");
     el.classList.add("done");
     refreshBundle();
     return;
   }
   if (type === "step_error") {
-    $("#status-line").textContent = "ERROR: " + payload.message;
+    setStatus("ERROR: " + payload.message, "error");
     const el = step("error", "Error");
     el.classList.add("error");
     el.querySelector(".body").innerHTML = `<pre>${escapeHtml(payload.traceback || payload.message)}</pre>`;
