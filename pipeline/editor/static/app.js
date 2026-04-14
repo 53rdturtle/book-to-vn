@@ -5,6 +5,24 @@ let currentJob = null;
 let proposedDescriptions = null;
 let bundleState = null;
 
+// --- lightbox ---
+document.addEventListener("click", (e) => {
+  const img = e.target.closest(".asset-card img");
+  if (img) {
+    $("#lightbox-img").src = img.src;
+    $("#lightbox").hidden = false;
+  } else if (e.target.closest("#lightbox")) {
+    $("#lightbox").hidden = true;
+    $("#lightbox-img").src = "";
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#lightbox").hidden) {
+    $("#lightbox").hidden = true;
+    $("#lightbox-img").src = "";
+  }
+});
+
 // --- bundle bar ---
 $("#refresh-bundle").onclick = refreshBundle;
 $("#bundle-dir").addEventListener("change", refreshBundle);
