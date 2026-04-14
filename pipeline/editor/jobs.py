@@ -6,7 +6,10 @@ drained by the SSE endpoint. Confirmations from the UI resolve
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import queue
+import sys
 import threading
 import traceback
 import uuid
@@ -72,7 +75,46 @@ def _emit(job: Job, event_type: str, **payload: Any) -> None:
     job.events.put({"type": event_type, "payload": payload})
 
 
+class _TeeToDebug(io.TextIOBase):
+    """Forward writes to the real stream AND emit each line as a debug event."""
+
+    def __init__(self, job: Job, underlying) -> None:
+        self._job = job
+        self._underlying = underlying
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        try:
+            self._underlying.write(s)
+        except Exception:
+            pass
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            if line:
+                _emit(self._job, "debug", line=line)
+        return len(s)
+
+    def flush(self) -> None:
+        try:
+            self._underlying.flush()
+        except Exception:
+            pass
+        if self._buf:
+            _emit(self._job, "debug", line=self._buf)
+            self._buf = ""
+
+
 def _run(job: Job) -> None:
+    tee_out = _TeeToDebug(job, sys.stdout)
+    tee_err = _TeeToDebug(job, sys.stderr)
+    with contextlib.redirect_stdout(tee_out), contextlib.redirect_stderr(tee_err):
+        _run_body(job)
+        tee_out.flush()
+        tee_err.flush()
+
+
+def _run_body(job: Job) -> None:
     try:
         api_log.reset()
         out_dir = job.out_dir

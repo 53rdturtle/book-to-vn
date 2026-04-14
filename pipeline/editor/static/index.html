@@ -27,7 +27,7 @@
         <option value="nanobanana" selected>nanobanana (real images)</option>
       </select>
     </label>
-    <label><input type="checkbox" id="no-cache" /> Bypass cache</label>
+    <label><input type="checkbox" id="no-cache" /> Bypass Gemini timeline cache (force re-call per chapter)</label>
     <label><input type="checkbox" id="skip-confirm" /> Auto-accept all confirmations</label>
     <div class="action-row">
       <button id="start-btn" class="primary">Start pipeline</button>
@@ -45,6 +45,17 @@
   <section class="panel">
     <h2>Assets</h2>
     <div id="assets-view"></div>
+  </section>
+
+  <section class="panel">
+    <details id="debug-panel" open>
+      <summary><h2 style="display:inline">Debug log</h2></summary>
+      <div class="action-row">
+        <button id="clear-debug">Clear</button>
+        <label><input type="checkbox" id="debug-autoscroll" checked /> Autoscroll</label>
+      </div>
+      <pre id="debug-log"></pre>
+    </details>
   </section>
 </main>
 

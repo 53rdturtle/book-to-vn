@@ -262,24 +262,48 @@ def propose_missing_descriptions(
     folded into the result so callers get a complete picture.
     """
     roster = cast.get("cast", {})
+    stored_cast = cast_mod.load(out_dir).get("cast", {})
     stored_bgs = bg_mod.load(out_dir)
 
-    chars_needing = [
-        cid for cid in major_chars
-        if not roster.get(cid, {}).get("visual_description")
-    ]
+    print(f"[descriptions] out_dir={out_dir}")
+    print(f"[descriptions] cast.json exists={ (out_dir / config.BUNDLE_CAST_JSON).exists() }, "
+          f"prior chars with visual_description="
+          f"{sorted(cid for cid, m in stored_cast.items() if m.get('visual_description'))}")
+    print(f"[descriptions] backgrounds.json exists={ (out_dir / config.BUNDLE_BACKGROUNDS_JSON).exists() }, "
+          f"prior bgs with visual_description="
+          f"{sorted(bid for bid, m in stored_bgs.get('backgrounds', {}).items() if m.get('visual_description'))}")
+    print(f"[descriptions] in-memory cast chars with visual_description="
+          f"{sorted(cid for cid, m in roster.items() if m.get('visual_description'))}")
+    print(f"[descriptions] major_chars={major_chars}, bg_ids={sorted(bg_ids)}")
+
+    def _has_char_desc(cid: str) -> bool:
+        return bool(
+            roster.get(cid, {}).get("visual_description")
+            or stored_cast.get(cid, {}).get("visual_description")
+        )
+
+    chars_needing = [cid for cid in major_chars if not _has_char_desc(cid)]
     bgs_needing = sorted(
         bid for bid in bg_ids
         if not bg_mod.get_visual_description(stored_bgs, bid)
     )
+    print(f"[descriptions] chars_needing (will query Gemini)={chars_needing}")
+    print(f"[descriptions] bgs_needing (will query Gemini)={bgs_needing}")
 
-    existing_chars = {
-        cid: roster.get(cid, {}).get("visual_description", "")
-        for cid in major_chars
-        if roster.get(cid, {}).get("visual_description")
-    }
+    existing_chars: dict[str, str] = {}
+    for cid in major_chars:
+        desc = (
+            roster.get(cid, {}).get("visual_description")
+            or stored_cast.get(cid, {}).get("visual_description")
+        )
+        if desc:
+            existing_chars[cid] = desc
     existing_names = {
-        cid: roster.get(cid, {}).get("display_name", cid)
+        cid: (
+            roster.get(cid, {}).get("display_name")
+            or stored_cast.get(cid, {}).get("display_name")
+            or cid
+        )
         for cid in major_chars
     }
     existing_bgs = {
@@ -290,6 +314,8 @@ def propose_missing_descriptions(
 
     proposed = {"characters": {}, "display_names": {}, "backgrounds": {}}
     if chars_needing or bgs_needing:
+        print(f"[descriptions] calling Gemini for {len(chars_needing)} chars + "
+              f"{len(bgs_needing)} bgs")
         excerpt = collect_excerpt(entries)
         proposed = visual_descriptions.propose(
             book_title=book_title,
@@ -297,6 +323,10 @@ def propose_missing_descriptions(
             bg_ids=bgs_needing,
             excerpt=excerpt,
         )
+    else:
+        print(f"[descriptions] nothing needed — skipping Gemini call entirely")
+    print(f"[descriptions] reused existing chars={sorted(existing_chars.keys())}, "
+          f"reused existing bgs={sorted(existing_bgs.keys())}")
 
     return {
         "characters": {**existing_chars, **proposed.get("characters", {})},

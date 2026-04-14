@@ -273,7 +273,19 @@ def _cmd_build(args: argparse.Namespace) -> None:
     print(f"[pipeline] split into {len(chs)} chapter(s)")
 
     out_dir = Path(args.out)
+    # Reuse prior visual_description / display_name entries if a bundle already
+    # exists at out_dir; update_from_timeline preserves these across the rebuild.
+    prior_cast = cast_mod.load(out_dir)
+    prior_roster = prior_cast.get("cast", {})
     cast = {"cast": {}}
+    for cid, meta in prior_roster.items():
+        carried = {}
+        if meta.get("visual_description"):
+            carried["visual_description"] = meta["visual_description"]
+        if meta.get("display_name") and meta["display_name"] != cid:
+            carried["display_name"] = meta["display_name"]
+        if carried:
+            cast["cast"][cid] = carried
     log = BuildLog(out_dir)
 
     prompt_template = config.PROMPT_PATH.read_text(encoding="utf-8")

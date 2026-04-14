@@ -98,8 +98,21 @@ function step(id, title) {
   return el;
 }
 
+$("#clear-debug").onclick = () => { $("#debug-log").textContent = ""; };
+
+function appendDebug(line) {
+  const el = $("#debug-log");
+  el.textContent += line + "\n";
+  if ($("#debug-autoscroll").checked) el.scrollTop = el.scrollHeight;
+}
+
 function handleEvent({ type, payload }) {
+  if (type === "debug") {
+    appendDebug(payload.line);
+    return;
+  }
   if (type === "status") {
+    appendDebug("[status] " + payload.message);
     $("#status-line").textContent = payload.message;
     return;
   }
