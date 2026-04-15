@@ -500,6 +500,6 @@ def launch_godot(bundle_dir: Path) -> subprocess.Popen:
     project_dir = (Path(__file__).resolve().parent.parent / "godot_player").resolve()
     return subprocess.Popen(
         [exe, "--path", str(project_dir), "--", "--bundle", str(Path(bundle_dir).resolve())],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
