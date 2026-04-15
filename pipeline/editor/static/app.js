@@ -364,12 +364,25 @@ function renderAssets() {
         ? view.querySelector('[data-cascade="baseline"]')
         : (kind === "char_neutral" ? view.querySelector(`[data-cascade="${id}"]`) : null);
       const cascade = cascadeBox ? cascadeBox.checked : false;
+      const label = kind === "baseline" ? "baseline" :
+                    kind === "bg" ? `bg ${id}` : `${id}/${expr}`;
       b.disabled = true;
       b.textContent = "...";
-      await fetch("/api/regenerate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bundle: bundlePath, kind, id, expr, description, cascade }),
-      });
+      setStatus(`Regenerating ${label}${cascade ? " + cascade" : ""}...`, "running");
+      try {
+        const r = await fetch("/api/regenerate", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bundle: bundlePath, kind, id, expr, description, cascade }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          setStatus(`Regen failed: ${err.detail || r.statusText}`, "error");
+        } else {
+          setStatus(`Regenerated ${label}${cascade ? " + cascade" : ""}`, "done");
+        }
+      } catch (e) {
+        setStatus(`Regen error: ${e.message}`, "error");
+      }
       await refreshBundle();
     };
   });
