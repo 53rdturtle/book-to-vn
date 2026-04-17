@@ -48,9 +48,6 @@ def propose(
 ) -> dict:
     """Return {"visual_style": str, "characters": {...}, "display_names": {...},
     "minor_silhouettes": {...}, "backgrounds": {...}}."""
-    if not char_ids and not bg_ids and not minor_char_ids:
-        return {"visual_style": "", "characters": {}, "display_names": {},
-                "minor_silhouettes": {}, "backgrounds": {}}
     prompt = _render(book_title, char_ids, bg_ids, excerpt, minor_char_ids)
     raw = gemini_client.call_gemini_json(prompt, call_type="visual_desc")
     minor_sil = {}

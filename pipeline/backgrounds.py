@@ -38,7 +38,7 @@ def save(bundle_dir: Path, backgrounds: dict) -> None:
 def set_visual_description(backgrounds: dict, bg_id: str, description: str) -> dict:
     roster = {bid: dict(meta) for bid, meta in backgrounds.get("backgrounds", {}).items()}
     roster.setdefault(bg_id, {})["visual_description"] = description
-    return {"backgrounds": roster}
+    return {**backgrounds, "backgrounds": roster}
 
 
 def get_visual_description(backgrounds: dict, bg_id: str) -> str:

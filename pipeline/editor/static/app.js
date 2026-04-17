@@ -37,8 +37,25 @@ $("#restart-btn").onclick = async () => {
   if (!confirm("Restart the editor server?")) return;
   $("#restart-btn").disabled = true;
   $("#restart-btn").textContent = "Restarting...";
+  const restartedAt = Date.now();
   try { await fetch("/api/restart", { method: "POST" }); } catch {}
-  setTimeout(() => { location.reload(); }, 2000);
+  // Poll /api/health until the new server responds with a start_time after
+  // the restart was requested, then reload. Gives up after 30s.
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 300));
+    try {
+      const r = await fetch("/api/health", { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        if ((j.start_time || 0) * 1000 >= restartedAt - 500) {
+          location.reload();
+          return;
+        }
+      }
+    } catch {}
+  }
+  $("#restart-btn").textContent = "Restart failed — reload manually";
 };
 
 // --- bundle bar ---
@@ -170,11 +187,11 @@ function handleEvent({ type, payload }) {
     const styleText = payload.visual_style || "";
     el.querySelector(".body").innerHTML = `
       <div>Edit descriptions below, then click Confirm.</div>
-      ${styleText ? `<div style="margin-top:8px">
-        <label>Visual style (applies to all images)
-          <textarea id="visual-style-input" class="autosize">${escapeHtml(styleText)}</textarea>
+      <div style="margin-top:8px">
+        <label>Visual style (applies to all images; leave empty and fill via Baseline &gt; Propose later if unsure)
+          <textarea id="visual-style-input" class="autosize" placeholder="e.g. soft watercolor anime style with warm muted tones">${escapeHtml(styleText)}</textarea>
         </label>
-      </div>` : ""}
+      </div>
       ${chars.map(([cid, desc]) => `
         <div style="margin-top:8px">
           <label>char <code>${cid}</code> display name
@@ -290,13 +307,16 @@ function renderAssets() {
   let html = `<div class="panel" style="flex-basis:100%">`;
 
   // Baseline
+  const visualStyle = bundleState.backgrounds?.visual_style || "";
   if (assets.baseline) {
     html += `<div class="group-title">Baseline</div>
       <div class="asset-grid">
         <div class="asset-card">
           <img src="/api/asset?bundle=${enc(bundlePath)}&rel=${enc(assets.baseline.path)}&t=${assets.baseline.mtime}" />
           <div class="id">baseline</div>
+          <textarea id="baseline-style" class="autosize" placeholder="visual style (applies to all images)">${escapeHtml(visualStyle)}</textarea>
           <div class="actions">
+            <button id="propose-style">Propose</button>
             <button data-action="regen" data-kind="baseline">Regen</button>
             <label style="display:inline"><input type="checkbox" data-cascade="baseline" /> cascade</label>
             <button data-action="upload" data-kind="baseline">Upload</button>
@@ -364,6 +384,11 @@ function renderAssets() {
         ? view.querySelector('[data-cascade="baseline"]')
         : (kind === "char_neutral" ? view.querySelector(`[data-cascade="${id}"]`) : null);
       const cascade = cascadeBox ? cascadeBox.checked : false;
+      let visual_style;
+      if (kind === "baseline") {
+        const styleTA = document.getElementById("baseline-style");
+        if (styleTA) visual_style = styleTA.value;
+      }
       const label = kind === "baseline" ? "baseline" :
                     kind === "bg" ? `bg ${id}` : `${id}/${expr}`;
       b.disabled = true;
@@ -372,7 +397,7 @@ function renderAssets() {
       try {
         const r = await fetch("/api/regenerate", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bundle: bundlePath, kind, id, expr, description, cascade }),
+          body: JSON.stringify({ bundle: bundlePath, kind, id, expr, description, visual_style, cascade }),
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
@@ -386,6 +411,35 @@ function renderAssets() {
       await refreshBundle();
     };
   });
+
+  const proposeBtn = view.querySelector('#propose-style');
+  if (proposeBtn) {
+    proposeBtn.onclick = async () => {
+      const ta = document.getElementById("baseline-style");
+      proposeBtn.disabled = true;
+      const prev = proposeBtn.textContent;
+      proposeBtn.textContent = "...";
+      setStatus("Proposing visual style via Gemini...", "running");
+      try {
+        const r = await fetch("/api/propose_visual_style", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bundle: bundlePath }),
+        });
+        const j = await r.json();
+        if (!r.ok) {
+          setStatus(`Propose failed: ${j.detail || r.statusText}`, "error");
+        } else if (ta) {
+          ta.value = j.visual_style || "";
+          ta.dispatchEvent(new Event("input"));
+          setStatus("Proposed style — edit and click Regen.", "done");
+        }
+      } catch (e) {
+        setStatus(`Propose error: ${e.message}`, "error");
+      }
+      proposeBtn.disabled = false;
+      proposeBtn.textContent = prev;
+    };
+  }
 
   view.querySelectorAll('button[data-action="upload"]').forEach((b) => {
     b.onclick = () => {

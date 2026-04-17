@@ -18,8 +18,14 @@ from pipeline.editor import jobs
 
 
 _STATIC = Path(__file__).resolve().parent / "static"
+_START_TIME = __import__("time").time()
 
 app = FastAPI(title="book-to-vn editor")
+
+
+@app.get("/api/health")
+async def api_health():
+    return {"ok": True, "start_time": _START_TIME}
 
 
 # ---------- helpers ----------
@@ -151,6 +157,42 @@ async def api_confirm(job_id: str, req: Request):
     return {"ok": True}
 
 
+@app.post("/api/propose_visual_style")
+async def api_propose_visual_style(req: Request):
+    body = await req.json()
+    bundle = _resolve_bundle(body.get("bundle", ""))
+    if not bundle.exists():
+        raise HTTPException(404, "bundle not found")
+
+    book_json = bundle / config.BUNDLE_BOOK_JSON
+    book = json.loads(book_json.read_text(encoding="utf-8")) if book_json.exists() else {}
+    title = book.get("title", "Untitled")
+
+    # collect a short excerpt from the first chapter's say commands
+    excerpt_lines: list[str] = []
+    chapters_dir = bundle / "chapters"
+    if chapters_dir.exists():
+        for cp in sorted(chapters_dir.glob("*.json")):
+            try:
+                ch = json.loads(cp.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for cmd in ch.get("commands", []):
+                if cmd.get("type") == "say" and cmd.get("text"):
+                    excerpt_lines.append(cmd["text"])
+                    if len(excerpt_lines) >= 10:
+                        break
+            if len(excerpt_lines) >= 10:
+                break
+    excerpt = "\n".join(excerpt_lines)
+
+    from pipeline.llm import visual_descriptions
+    proposed = visual_descriptions.propose(
+        book_title=title, char_ids=[], bg_ids=[], excerpt=excerpt, minor_char_ids=[],
+    )
+    return {"visual_style": proposed.get("visual_style", "")}
+
+
 @app.post("/api/regenerate")
 async def api_regenerate(req: Request):
     body = await req.json()
@@ -159,6 +201,7 @@ async def api_regenerate(req: Request):
     cid = body.get("id")
     expr = body.get("expr")
     description = body.get("description")
+    visual_style = body.get("visual_style")
     cascade = bool(body.get("cascade", False))
 
     if not bundle.exists():
@@ -174,17 +217,22 @@ async def api_regenerate(req: Request):
         elif kind == "bg" and cid:
             bgs = bg_mod.set_visual_description(bgs, cid, description)
             bg_mod.save(bundle, bgs)
+    if visual_style is not None:
+        bgs = bg_mod.set_visual_style(bgs, visual_style)
+        bg_mod.save(bundle, bgs)
 
     regenerated: list[str] = []
 
     if kind == "baseline":
+        style = bg_mod.get_visual_style(bgs) or None
+        adapter = steps._nano_adapter(style=style)
         if cascade:
             char_dir = bundle / config.BUNDLE_CHAR_DIR
             if char_dir.exists():
                 for cdir in char_dir.iterdir():
                     if cdir.is_dir() and cdir.name != "_baseline":
                         shutil.rmtree(cdir)
-        p = steps.gen_baseline(bundle, force=True)
+        p = steps.gen_baseline(bundle, adapter=adapter, force=True)
         regenerated.append(str(p))
         if cascade:
             roster = cast.get("cast", {})
@@ -192,7 +240,7 @@ async def api_regenerate(req: Request):
                      if m.get("appearance_count", 0) >= config.MAJOR_CHAR_MIN_APPEARANCES]
             for mc in major:
                 desc = roster.get(mc, {}).get("visual_description", "")
-                regenerated.append(str(steps.gen_basic_char(bundle, mc, desc, force=True)))
+                regenerated.append(str(steps.gen_basic_char(bundle, mc, desc, adapter=adapter, force=True)))
     elif kind == "char_neutral":
         if not cid:
             raise HTTPException(400, "id required")

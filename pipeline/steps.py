@@ -325,7 +325,8 @@ def propose_missing_descriptions(
                 "minor_silhouettes": {}, "backgrounds": {}}
     if chars_needing or bgs_needing or minors_needing:
         print(f"[descriptions] calling Gemini for {len(chars_needing)} chars + "
-              f"{len(bgs_needing)} bgs + {len(minors_needing)} minor classifications")
+              f"{len(bgs_needing)} bgs + {len(minors_needing)} minor classifications"
+              + ("" if existing_style else " (also proposing visual_style)"))
         excerpt = collect_excerpt(entries)
         proposed = visual_descriptions.propose(
             book_title=book_title,
@@ -335,7 +336,9 @@ def propose_missing_descriptions(
             minor_char_ids=minors_needing,
         )
     else:
-        print(f"[descriptions] nothing needed — skipping Gemini call entirely")
+        print(f"[descriptions] nothing needed — skipping Gemini call entirely"
+              + (" (visual_style stays empty; use 'Propose' button in UI to fill it)"
+                 if not existing_style else ""))
     print(f"[descriptions] reused existing chars={sorted(existing_chars.keys())}, "
           f"reused existing bgs={sorted(existing_bgs.keys())}")
 
@@ -349,15 +352,46 @@ def propose_missing_descriptions(
             or stored_cast.get(cid, {}).get("silhouette_type"))
     }
 
-    return {
+    # Drop any hallucinated IDs: Gemini may return entries for chars/bgs/minors
+    # we didn't ask about (e.g. when called only to propose visual_style).
+    raw_proposed_chars = proposed.get("characters", {})
+    raw_proposed_bgs = proposed.get("backgrounds", {})
+    raw_proposed_names = proposed.get("display_names", {})
+    raw_proposed_silhouettes = proposed.get("minor_silhouettes", {})
+
+    dropped_chars = sorted(set(raw_proposed_chars) - set(chars_needing))
+    dropped_bgs = sorted(set(raw_proposed_bgs) - set(bgs_needing))
+    dropped_silhouettes = sorted(set(raw_proposed_silhouettes) - set(minors_needing))
+    if dropped_chars:
+        print(f"[descriptions] dropping hallucinated chars from LLM: {dropped_chars}")
+    if dropped_bgs:
+        print(f"[descriptions] dropping hallucinated bgs from LLM: {dropped_bgs}")
+    if dropped_silhouettes:
+        print(f"[descriptions] dropping hallucinated minor silhouettes from LLM: {dropped_silhouettes}")
+
+    filtered_chars = {k: v for k, v in raw_proposed_chars.items() if k in chars_needing}
+    filtered_bgs = {k: v for k, v in raw_proposed_bgs.items() if k in bgs_needing}
+    filtered_names = {k: v for k, v in raw_proposed_names.items() if k in chars_needing}
+    filtered_silhouettes = {k: v for k, v in raw_proposed_silhouettes.items() if k in minors_needing}
+
+    result = {
         "visual_style": visual_style,
-        "characters": {**existing_chars, **proposed.get("characters", {})},
-        "display_names": {**existing_names, **proposed.get("display_names", {})},
-        "minor_silhouettes": {**existing_silhouettes, **proposed.get("minor_silhouettes", {})},
-        "backgrounds": {**existing_bgs, **proposed.get("backgrounds", {})},
+        "characters": {**existing_chars, **filtered_chars},
+        "display_names": {**existing_names, **filtered_names},
+        "minor_silhouettes": {**existing_silhouettes, **filtered_silhouettes},
+        "backgrounds": {**existing_bgs, **filtered_bgs},
         "chars_needing": chars_needing,
         "bgs_needing": bgs_needing,
     }
+    print(f"[descriptions] FINAL visual_style={result['visual_style']!r} "
+          f"(existing_style={existing_style!r})")
+    for cid, desc in result["characters"].items():
+        src = "existing" if cid in existing_chars and existing_chars[cid] == desc else "proposed"
+        print(f"[descriptions] FINAL char {cid} [{src}]: {desc[:80]!r}")
+    for bid, desc in result["backgrounds"].items():
+        src = "existing" if bid in existing_bgs and existing_bgs[bid] == desc else "proposed"
+        print(f"[descriptions] FINAL bg {bid} [{src}]: {desc[:80]!r}")
+    return result
 
 
 def save_descriptions(
@@ -381,8 +415,7 @@ def save_descriptions(
             cast = cast_mod.set_silhouette_type(cast, cid, stype)
 
     stored_bgs = bg_mod.load(out_dir)
-    if visual_style:
-        stored_bgs = bg_mod.set_visual_style(stored_bgs, visual_style)
+    stored_bgs = bg_mod.set_visual_style(stored_bgs, visual_style)
     for bid, desc in bg_descs.items():
         stored_bgs = bg_mod.set_visual_description(stored_bgs, bid, desc)
     out_dir.mkdir(parents=True, exist_ok=True)
