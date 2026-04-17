@@ -5,6 +5,21 @@ from typing import Any
 
 from pipeline import config
 
+_override: Path | None = None
+
+
+def set_dir(path: Path | None) -> None:
+    """Point the cache at a specific directory for the current build.
+
+    Passing None reverts to the global ``config.CACHE_DIR``.
+    """
+    global _override
+    _override = Path(path) if path else None
+
+
+def _root() -> Path:
+    return _override if _override is not None else config.CACHE_DIR
+
 
 def content_key(*parts: Any) -> str:
     """Build a content-hash key from arbitrary stringifiable parts.
@@ -24,11 +39,11 @@ def content_key(*parts: Any) -> str:
 
 
 def _path_for(stage: str, key: str) -> Path:
-    return config.CACHE_DIR / stage / key[:2] / f"{key}.json"
+    return _root() / stage / key[:2] / f"{key}.json"
 
 
 def _bytes_path_for(stage: str, key: str, ext: str) -> Path:
-    return config.CACHE_DIR / stage / key[:2] / f"{key}.{ext}"
+    return _root() / stage / key[:2] / f"{key}.{ext}"
 
 
 def get(stage: str, key: str) -> Any | None:

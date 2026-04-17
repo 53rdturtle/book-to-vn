@@ -18,6 +18,11 @@ VALID_SILHOUETTE_TYPES = {
     "elder_male", "elder_female",
 }
 
+_PROMPT_TO_INTERNAL = {
+    "young_male": "child_male",
+    "young_female": "child_female",
+}
+
 
 def _render(
     book_title: str,
@@ -52,6 +57,7 @@ def propose(
     raw = gemini_client.call_gemini_json(prompt, call_type="visual_desc")
     minor_sil = {}
     for cid, stype in raw.get("minor_silhouettes", {}).items():
+        stype = _PROMPT_TO_INTERNAL.get(stype, stype)
         if stype in VALID_SILHOUETTE_TYPES:
             minor_sil[cid] = stype
         else:

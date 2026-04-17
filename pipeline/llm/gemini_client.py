@@ -1,11 +1,33 @@
 import json
 import time
+from datetime import datetime
+from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
 from pipeline import asset_catalog, config
 from pipeline.chapters import Chapter
 from pipeline.segmenter import Segment
+
+_FALLBACK_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs" / "prompts"
+
+
+def _dump_call(call_type: str, prompt: str, response: str, note: str = "") -> Path:
+    from pipeline import api_log
+    base = (api_log.OUT_DIR / "logs" / "calls") if api_log.OUT_DIR else _FALLBACK_LOG_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = base / f"{ts}_{call_type}.txt"
+    header = (
+        f"# call_type={call_type}\n"
+        f"# timestamp={ts}\n"
+        f"# note={note}\n"
+        f"# prompt_length={len(prompt)}\n"
+        f"# response_length={len(response)}\n"
+        f"--- PROMPT ---\n"
+    )
+    path.write_text(header + prompt + "\n--- RESPONSE ---\n" + response + "\n", encoding="utf-8")
+    return path
 
 
 class GeminiError(RuntimeError):
@@ -59,6 +81,22 @@ def _call_gemini_json(prompt: str, call_type: str = "unknown") -> dict:
             )
             elapsed = time.time() - t0
             text = resp.text or ""
+            note = "ok"
+            if not text.strip():
+                pf = getattr(resp, "prompt_feedback", None)
+                block_reason = getattr(pf, "block_reason", None) if pf else None
+                cands = getattr(resp, "candidates", None) or []
+                finish_reason = getattr(cands[0], "finish_reason", None) if cands else None
+                safety = getattr(cands[0], "safety_ratings", None) if cands else None
+                note = f"empty response: block_reason={block_reason} finish_reason={finish_reason}"
+                print(
+                    f"[gemini_client] empty response (call_type={call_type}, attempt={attempt + 1}): "
+                    f"finish_reason={finish_reason} block_reason={block_reason} "
+                    f"safety_ratings={safety} prompt_feedback={pf}"
+                )
+            dump_path = _dump_call(call_type, prompt, text, note=f"attempt={attempt + 1} {note}")
+            if not text.strip():
+                print(f"[gemini_client] call dumped to: {dump_path}")
             result = json.loads(text)
 
             usage = resp.usage_metadata

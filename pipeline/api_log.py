@@ -127,7 +127,16 @@ class ApiLog:
 # Module-level singleton so all modules can record to the same log.
 current: ApiLog = ApiLog()
 
+# Output directory for the currently running build. Per-call prompt/response
+# dumps from gemini_client are written under <OUT_DIR>/logs/calls/ when set.
+OUT_DIR: Path | None = None
+
 
 def reset() -> None:
     global current
     current = ApiLog()
+
+
+def set_out_dir(path: Path | None) -> None:
+    global OUT_DIR
+    OUT_DIR = Path(path) if path else None

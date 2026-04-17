@@ -302,6 +302,8 @@ def _cmd_build(args: argparse.Namespace) -> None:
     print(f"[pipeline] split into {len(chs)} chapter(s)")
 
     out_dir = Path(args.out)
+    api_log.set_out_dir(out_dir)
+    cache.set_dir(out_dir / "cache")
     # Reuse prior visual_description / display_name entries if a bundle already
     # exists at out_dir; update_from_timeline preserves these across the rebuild.
     prior_cast = cast_mod.load(out_dir)

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from pipeline import api_log, bundle as bundle_mod, cast as cast_mod, config, steps
+from pipeline import api_log, bundle as bundle_mod, cache, cast as cast_mod, config, steps
 from pipeline.assets.placeholders import PlaceholderAdapter
 from pipeline.build_log import BuildLog
 
@@ -119,6 +119,8 @@ def _run_body(job: Job) -> None:
         api_log.reset()
         out_dir = job.out_dir
         out_dir.mkdir(parents=True, exist_ok=True)
+        api_log.set_out_dir(out_dir)
+        cache.set_dir(out_dir / "cache")
         log = BuildLog(out_dir)
 
         _emit(job, "status", message="splitting chapters")
@@ -145,7 +147,7 @@ def _run_body(job: Job) -> None:
             for c, _s, t in entries
         ])
 
-        book_title = raw[0][0].title if len(raw) == 1 else f"build-{job.job_id}"
+        book_title = Path(job.out_dir).name or (raw[0][0].title if len(raw) == 1 else f"build-{job.job_id}")
 
         char_descs: dict[str, str] = {}
         bg_descs: dict[str, str] = {}

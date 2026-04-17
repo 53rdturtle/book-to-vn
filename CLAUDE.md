@@ -29,7 +29,8 @@ Visual novel playback
 - **Input:** any `.txt`, structure-tolerant.
 - **Assets v1:** placeholder art (Pillow-drawn BGs + silhouettes) and silent TTS stubs. Real generation lands in M4–M5 behind adapter interfaces.
 - **Gemini output:** compact form (send `seg_id`, not prose text). Pipeline expands post-hoc for zero text drift. Token savings ~600 per chapter.
-- **Caching:** stub in M1 (no-op). Real content-hash cache wires in M2.
+- **Caching:** content-hash keyed cache per build, stored at `<out_dir>/cache/`. Deleting the output directory triggers full regeneration. Overridable at runtime via `cache.set_dir(path)`.
+- **Diagnostics:** per-call prompt/response dumps to `<out_dir>/logs/calls/`, block reasons logged on failure.
 - **Character state:** persistent `cast.json` deferred to M2. M1 has no cross-chapter memory.
 
 ## File Structure
@@ -39,7 +40,7 @@ pipeline/
   __main__.py              # CLI: `python -m pipeline build <txt> -o <bundle>` or `editor`
   config.py               # env loading, path constants (GODOT_EXE, EDITOR_PORT)
   api_log.py              # centralized API call logging (token usage, costs)
-  cache.py                # stub (M1); content-hash keyed cache (M2+)
+  cache.py                # content-hash keyed cache per-build, rooted at <out_dir>/cache/ (overridable)
   cast.py                 # persistent character roster (M2+)
   backgrounds.py          # persistent background descriptions (M4+)
   chapters.py             # single-chapter wrapper (M1); multi-chapter heuristics (M2)
@@ -175,7 +176,7 @@ python -m pipeline editor
 
 **Major Character Filter:** Only characters with ≥10 appearances (configurable via `MAJOR_CHAR_MIN_APPEARANCES`) receive NanoBanana images. Minor characters fall back to placeholder silhouettes.
 
-**Caching:** Image cache at `~/.book-to-vn/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
+**Caching:** Image cache at `<out_dir>/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
 
 **Descriptions:** LLM generates `visual_style` (art style for all images), `visual_description` (character/background appearance), and `display_name` (speaker label in source language, e.g., Chinese characters for Chinese books). Visual style is stored in `backgrounds.json` and applies uniformly to baseline, character, and background generation. Character descriptions and names are stored in `cast.json` and reused across chapters. Background descriptions are stored in `backgrounds.json` and similarly reused. Edit any entry and delete the corresponding PNG to regenerate with a new description.
 
@@ -238,9 +239,9 @@ bundle/
 ## Milestones
 
 - **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
-- **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache at `~/.book-to-vn/cache` (override with `BOOK_TO_VN_CACHE_DIR`). Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
+- **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache per-build at `<out_dir>/cache/` so deleting output triggers regeneration. Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
 - **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (30 tests via pytest).
-- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing. **Minor character silhouette pool:** Characters < 10 appearances are classified by LLM (gender/age: adult/child/elder × male/female) and assigned pre-matted silhouettes from `pipeline/assets/shared_pool/`. **Assets editor (M4.5):** Web UI (`python -m pipeline editor`) for step-by-step builds with in-browser confirmation, inline description editing, per-asset regeneration with cascade, manual image upload overrides, and integrated Godot playback.
+- **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing. **Minor character silhouette pool:** Characters < 10 appearances are classified by LLM (gender/age: adult/young/elder × male/female) and assigned pre-matted silhouettes from `pipeline/assets/shared_pool/`. **Assets editor (M4.5):** Web UI (`python -m pipeline editor`) for step-by-step builds with in-browser confirmation, inline description editing, per-asset regeneration with cascade, manual image upload overrides, and integrated Godot playback.
 - **M5 (next):** Real TTS. Per-character voice assignment.
 - **M6:** BGM/SE library. Mood-based selection.
 - **M7:** Polish. Save/load, backlog, text speed, skip read. Standalone export.

@@ -41,9 +41,10 @@ GUIDANCE:
   These are shown verbatim on screen as the speaker label.
 - For minor_silhouettes: classify each minor character listed below by
   silhouette_type. Valid values are exactly: "adult_male", "adult_female",
-  "child_male", "child_female", "elder_male", "elder_female". Pick the one
-  that best matches the character based on the excerpt and your knowledge of
-  the source work. If unsure, default to "adult_male" or "adult_female".
+  "young_male", "young_female", "elder_male", "elder_female". Use "young_*"
+  for juvenile/youth characters. Pick the one that best matches the character
+  based on the excerpt and your knowledge of the source work. If unsure,
+  default to "adult_male" or "adult_female".
 
 BOOK TITLE: {BOOK_TITLE}
 
