@@ -27,9 +27,14 @@ BUNDLE_VOICE_DIR = "voice"
 PACKAGE_ROOT = Path(__file__).resolve().parent
 SCHEMA_PATH = PACKAGE_ROOT / "schema" / "timeline.schema.json"
 LLM_SCHEMA_PATH = PACKAGE_ROOT / "schema" / "llm_timeline.schema.json"
+LLM_SPEAKERS_SCHEMA_PATH = PACKAGE_ROOT / "schema" / "llm_speakers.schema.json"
+LLM_BACKGROUNDS_SCHEMA_PATH = PACKAGE_ROOT / "schema" / "llm_backgrounds.schema.json"
+LLM_STAGE_SCHEMA_PATH = PACKAGE_ROOT / "schema" / "llm_stage.schema.json"
 SPLIT_SCHEMA_PATH = PACKAGE_ROOT / "schema" / "chapter_split.schema.json"
 CAST_SCHEMA_PATH = PACKAGE_ROOT / "schema" / "cast.schema.json"
-PROMPT_PATH = PACKAGE_ROOT / "llm" / "prompts" / "chapter_to_timeline.txt"
+SPEAKERS_PROMPT_PATH = PACKAGE_ROOT / "llm" / "prompts" / "speakers.txt"
+BACKGROUNDS_PROMPT_PATH = PACKAGE_ROOT / "llm" / "prompts" / "backgrounds.txt"
+STAGE_PROMPT_PATH = PACKAGE_ROOT / "llm" / "prompts" / "stage.txt"
 SPLITTER_PROMPT_PATH = PACKAGE_ROOT / "llm" / "prompts" / "chapter_splitter.txt"
 
 _cache_env = os.environ.get("BOOK_TO_VN_CACHE_DIR", "").strip()

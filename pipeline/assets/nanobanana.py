@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from pipeline import cache, config
+from pipeline import api_log, cache, config
 from pipeline.assets.adapter import ImageAdapter
 from pipeline.assets.placeholders import BG_SIZE, CHAR_SIZE
 
@@ -58,10 +58,36 @@ def _gen_config(aspect_ratio: str):
     )
 
 
+def _extract_prompt_text(contents) -> str:
+    """Pull the text prompt out of a `contents` payload (string or list of parts)."""
+    if isinstance(contents, str):
+        return contents
+    if isinstance(contents, list):
+        for item in reversed(contents):
+            if isinstance(item, str):
+                return item
+    return str(contents)
+
+
+def _contents_summary(contents) -> str:
+    """One-line description of the payload — text length plus any reference images."""
+    if isinstance(contents, str):
+        return f"text({len(contents)} chars)"
+    parts = []
+    for item in contents:
+        if isinstance(item, str):
+            parts.append(f"text({len(item)} chars)")
+        else:
+            parts.append(type(item).__name__)
+    return ", ".join(parts)
+
+
 def _call_image(contents, aspect_ratio: str, call_type: str = "image") -> bytes:
     """Call Gemini 3.1 Flash Image with retries, return raw image bytes."""
     client = _client()
-    prompt_summary = str(contents)[:200] if isinstance(contents, str) else str(contents[-1])[:200]
+    prompt_text = _extract_prompt_text(contents)
+    contents_desc = _contents_summary(contents)
+    prompt_summary = prompt_text[:200]
     last_err: Exception | None = None
     for attempt in range(3):
         try:
@@ -77,12 +103,19 @@ def _call_image(contents, aspect_ratio: str, call_type: str = "image") -> bytes:
                     usage = resp.usage_metadata
                     input_tokens = getattr(usage, "prompt_token_count", 0) or 0
                     output_tokens = getattr(usage, "candidates_token_count", 0) or 0
-                    from pipeline import api_log
+                    response_desc = (
+                        f"image ({len(part.inline_data.data)} bytes, "
+                        f"aspect={aspect_ratio}, size={config.NANO_BANANA_IMAGE_SIZE})"
+                    )
+                    api_log.dump_call(
+                        call_type, prompt_text, response_desc,
+                        note=f"attempt={attempt + 1} contents=[{contents_desc}]",
+                    )
                     api_log.current.record(
                         model=config.NANO_BANANA_MODEL,
                         call_type=call_type,
                         prompt_summary=prompt_summary,
-                        response_summary=f"image ({len(part.inline_data.data)} bytes)",
+                        response_summary=response_desc,
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
                         elapsed_s=elapsed,

@@ -31,11 +31,8 @@ from pipeline.assets import placeholders
 from pipeline.assets.adapter import ImageAdapter
 from pipeline.assets.placeholders import PlaceholderAdapter
 from pipeline.build_log import BuildLog
-from pipeline.llm import gemini_client, visual_descriptions
+from pipeline.llm import gemini_client, timeline_assembly, visual_descriptions
 from pipeline.segmenter import Segment
-
-
-ALL_EXPRS = ("neutral", "smile", "sad", "angry", "surprised", "worried", "thinking")
 
 
 class AssetIdError(Exception):
@@ -134,11 +131,15 @@ def generate_timelines(
     *,
     log: BuildLog | None = None,
     no_cache: bool = False,
+    initial_cast: dict | None = None,
 ) -> tuple[list[bundle.BundleEntry], dict]:
-    """Run Gemini on each chapter, expand says, update cast. Returns (entries, cast)."""
-    prompt_template = config.PROMPT_PATH.read_text(encoding="utf-8")
-    llm_schema_text = config.LLM_SCHEMA_PATH.read_text(encoding="utf-8")
-    cast = {"cast": {}}
+    """Run the three-pass LLM pipeline on each chapter, assemble & expand says,
+    update cast. Returns ``(entries, cast)``.
+
+    `initial_cast` lets callers carry over prior `cast.json` (display names,
+    visual descriptions) across a rebuild.
+    """
+    cast = _clone_cast(initial_cast) if initial_cast else {"cast": {}}
     entries: list[bundle.BundleEntry] = []
 
     for chapter, segs in raw_entries:
@@ -146,65 +147,43 @@ def generate_timelines(
             log.segments(chapter.id, segs)
 
         known_cast_text = cast_mod.render_known_cast(cast)
-        cache_key = cache.content_key(
-            "gemini_timeline",
-            config.GEMINI_MODEL,
-            prompt_template,
-            llm_schema_text,
-            chapter.id,
-            chapter.title,
-            chapter.body,
-            _segments_signature(segs),
-            known_cast_text,
-            asset_catalog.BG_IDS,
-            asset_catalog.BGM_IDS,
-            asset_catalog.SE_IDS,
+        known_char_ids = set(cast.get("cast", {}).keys())
+
+        print(f"[pipeline] {chapter.id}: running speakers + backgrounds in parallel, "
+              f"then stage (model={config.GEMINI_MODEL})")
+        t0 = time.time()
+        result = timeline_assembly.assemble_timeline(
+            chapter.id, chapter.title, segs,
+            known_cast_text=known_cast_text,
+            known_char_ids=known_char_ids,
+            no_cache=no_cache,
         )
+        elapsed = time.time() - t0
+        hits = [p.name for p in result.passes if p.cache_hit]
+        misses = [p.name for p in result.passes if not p.cache_hit]
+        print(f"[pipeline] {chapter.id}: assembly done in {elapsed:.2f}s "
+              f"(cache hits: {hits or 'none'}; ran: {misses or 'none'})")
 
-        llm_timeline: dict | None = None
-        if not no_cache:
-            llm_timeline = cache.get("gemini_timeline", cache_key)
-            if llm_timeline is not None:
-                print(f"[pipeline] {chapter.id}: cache hit")
-
-        if llm_timeline is None:
-            for attempt in range(2):
-                print(f"[pipeline] {chapter.id}: calling Gemini model {config.GEMINI_MODEL}"
-                      + (" (retry)" if attempt else ""))
-                t0 = time.time()
-                llm_timeline, rendered_prompt = gemini_client.generate_timeline(
-                    chapter.id, chapter.title, chapter.body, segs,
-                    known_cast_text=known_cast_text,
-                )
-                elapsed = time.time() - t0
-                if log:
-                    log.gemini_prompt(chapter.id, rendered_prompt)
-                    log.gemini_response(chapter.id, llm_timeline, elapsed)
-                validate_schema(llm_timeline, config.LLM_SCHEMA_PATH,
-                                f"LLM output for {chapter.id}")
-                try:
-                    validate_asset_ids(llm_timeline)
-                    break
-                except AssetIdError as e:
-                    if log:
-                        log.validation_error(chapter.id, "asset_ids", str(e))
-                    if attempt == 1:
-                        raise SystemExit(f"Asset-ID validation failed after retry: {e}")
-                    print(f"[pipeline] {chapter.id}: {e} — retrying")
-            cache.put("gemini_timeline", cache_key, llm_timeline)
-        else:
-            validate_schema(llm_timeline, config.LLM_SCHEMA_PATH,
-                            f"cached LLM output for {chapter.id}")
-            validate_asset_ids(llm_timeline)
+        llm_timeline = result.llm_timeline
+        validate_schema(llm_timeline, config.LLM_SCHEMA_PATH,
+                        f"assembled LLM timeline for {chapter.id}")
+        validate_asset_ids(llm_timeline)
 
         timeline = expand_says(llm_timeline, segs)
         validate_schema(timeline, config.SCHEMA_PATH,
                         f"Runtime timeline for {chapter.id}")
         entries.append((chapter, segs, timeline))
         cast = cast_mod.update_from_timeline(cast, timeline, chapter.id)
+        for cid, name in result.new_display_names.items():
+            cast = cast_mod.set_display_name(cast, cid, name)
         if log:
             log.cast_snapshot(chapter.id, cast)
     return entries, cast
+
+
+def _clone_cast(src: dict) -> dict:
+    roster = src.get("cast", {}) or {}
+    return {"cast": {cid: dict(meta) for cid, meta in roster.items()}}
 
 
 # ---------- manifests / major chars ----------

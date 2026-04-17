@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VN Pass A — speaker attribution",
+  "description": "Per-segment speaker assignment plus any new character IDs introduced in this chapter.",
+  "type": "object",
+  "required": ["chapter_id", "new_characters", "speakers"],
+  "additionalProperties": false,
+  "properties": {
+    "chapter_id": { "type": "string", "pattern": "^ch[0-9]{2,}$" },
+    "new_characters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "display_name"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "display_name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "speakers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seg_id", "speaker"],
+        "additionalProperties": false,
+        "properties": {
+          "seg_id": { "type": "string", "pattern": "^ch[0-9]{2,}_seg[0-9]{3,}$" },
+          "speaker": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -19,16 +19,6 @@ class BuildLog:
         lines = [f"{s.seg_id}  ({len(s.text)} chars)  {s.text}" for s in segs]
         self._write(f"{chapter_id}_segments.txt", "\n".join(lines) + "\n")
 
-    def gemini_prompt(self, chapter_id: str, prompt: str) -> None:
-        self._write(f"{chapter_id}_gemini_prompt.txt", prompt)
-
-    def gemini_response(self, chapter_id: str, response: dict, elapsed_s: float) -> None:
-        header = f"# Elapsed: {elapsed_s:.2f}s\n\n"
-        self._write(
-            f"{chapter_id}_gemini_response.json",
-            header + json.dumps(response, ensure_ascii=False, indent=2) + "\n",
-        )
-
     def validation_error(self, chapter_id: str, stage: str, message: str) -> None:
         self._write(
             f"{chapter_id}_error_{stage}.txt",

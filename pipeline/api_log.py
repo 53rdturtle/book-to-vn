@@ -6,7 +6,10 @@ Written to the build logs directory at the end of a pipeline run.
 import json
 import time
 from dataclasses import dataclass, field, asdict
+from datetime import datetime
 from pathlib import Path
+
+_FALLBACK_LOG_DIR = Path(__file__).resolve().parent.parent / "logs" / "prompts"
 
 # Pricing per 1M tokens (USD). Override via env if needed.
 _PRICING = {
@@ -140,3 +143,25 @@ def reset() -> None:
 def set_out_dir(path: Path | None) -> None:
     global OUT_DIR
     OUT_DIR = Path(path) if path else None
+
+
+def dump_call(call_type: str, prompt: str, response: str, note: str = "") -> Path:
+    """Write a prompt/response pair to ``<OUT_DIR>/logs/calls/`` for inspection.
+
+    Shared by text-LLM callers (gemini_client) and image callers (nanobanana),
+    so every external API request has one on-disk record with the exact inputs.
+    """
+    base = (OUT_DIR / "logs" / "calls") if OUT_DIR else _FALLBACK_LOG_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = base / f"{ts}_{call_type}.txt"
+    header = (
+        f"# call_type={call_type}\n"
+        f"# timestamp={ts}\n"
+        f"# note={note}\n"
+        f"# prompt_length={len(prompt)}\n"
+        f"# response_length={len(response)}\n"
+        f"--- PROMPT ---\n"
+    )
+    path.write_text(header + prompt + "\n--- RESPONSE ---\n" + response + "\n", encoding="utf-8")
+    return path

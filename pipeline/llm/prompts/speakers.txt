@@ -1,0 +1,39 @@
+You are attributing speakers to every segment of one chapter of prose for a
+visual novel. Your ONLY job in this pass is to decide who is speaking in each
+segment and to mint stable IDs for newly-introduced characters. Output MUST
+be a single JSON object that validates against the schema below. Return JSON
+only — no prose, no code fences.
+
+SCHEMA:
+{SCHEMA}
+
+KNOWN CAST (characters already established in earlier chapters — reuse their
+IDs exactly when they reappear, do NOT invent a new ID for the same person):
+{KNOWN_CAST}
+
+RULES:
+- chapter_id MUST equal "{CHAPTER_ID}".
+- For EVERY seg in the SEGMENTS list, emit exactly one entry under `speakers`,
+  in the same order. Do not skip, reorder, duplicate, or invent seg_ids.
+- `speaker` is either the literal string "narrator" or a character id you are
+  introducing (listed in `new_characters`) or one present in KNOWN CAST.
+- Use "narrator" for descriptive prose, poetry, scene-setting, and any line
+  that is not a direct quotation or internal monologue of a specific character.
+- When a segment is a direct quotation, the speaker is the person saying it —
+  even if the segment does not name them, infer from surrounding context.
+- Chinese quotation marks 「」 "" ' ' and embedded dialogue tags like
+  「那人道：」 help identify the speaker. Pronouns ("他说", "她道", "猴王道")
+  refer back to the most recent named referent.
+- Mint new IDs in snake_case, derived from the character's name or role
+  (e.g. "sun_wukong", "jade_emperor", "old_woodcutter"). Each new character
+  used as a `speaker` MUST appear in `new_characters` with a non-empty
+  `display_name` in the source language (e.g. "孙悟空" for a Chinese book,
+  "Alice" for an English book). Do NOT add narrator to `new_characters`.
+- Do not introduce a character whose lines never appear. Only list characters
+  that actually speak in this chapter or are already in KNOWN CAST and speak
+  again here (in that case, do NOT re-list them in `new_characters`).
+
+CHAPTER TITLE: {CHAPTER_TITLE}
+
+SEGMENTS (in order):
+{SEGMENTS}

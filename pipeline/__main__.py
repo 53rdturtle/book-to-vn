@@ -1,97 +1,36 @@
 import argparse
 import json
 import sys
-import time
-from dataclasses import asdict
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
-
-from pipeline import api_log, asset_catalog, backgrounds as bg_mod, bundle, cache, cast as cast_mod, chapters, config, segmenter
+from pipeline import api_log, backgrounds as bg_mod, bundle, cache, cast as cast_mod, chapters, config
 from pipeline.assets import placeholders
 from pipeline.assets.adapter import ImageAdapter
 from pipeline.assets.placeholders import PlaceholderAdapter
 from pipeline.build_log import BuildLog
-from pipeline.llm import gemini_client, visual_descriptions
+from pipeline.llm import visual_descriptions
 from pipeline.segmenter import Segment
+from pipeline import steps
 
-
-class AssetIdError(Exception):
-    pass
+# Re-exports: some tests (and possibly external tooling) import these from
+# pipeline.__main__. Keep them as thin delegates so the refactor doesn't break
+# import paths.
+AssetIdError = steps.AssetIdError
 
 
 def _validate_asset_ids(llm_timeline: dict) -> None:
-    unknown: list[str] = []
-    for cmd in llm_timeline.get("commands", []):
-        t = cmd.get("type")
-        if t == "bg" and cmd["id"] not in asset_catalog.BG_SET:
-            unknown.append(f"bg '{cmd['id']}'")
-        elif t == "bgm_play" and cmd["id"] not in asset_catalog.BGM_SET:
-            unknown.append(f"bgm '{cmd['id']}'")
-        elif t == "se" and cmd["id"] not in asset_catalog.SE_SET:
-            unknown.append(f"se '{cmd['id']}'")
-    if unknown:
-        raise AssetIdError(f"Unknown asset IDs: {', '.join(unknown)}")
-
-
-def _load_schema(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    steps.validate_asset_ids(llm_timeline)
 
 
 def _validate(timeline: dict, schema_path: Path, label: str) -> None:
-    validator = Draft202012Validator(_load_schema(schema_path))
-    errors = sorted(validator.iter_errors(timeline), key=lambda e: list(e.path))
-    if errors:
-        msgs = [f"- {'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}" for e in errors]
-        raise SystemExit(f"{label} failed schema validation:\n" + "\n".join(msgs))
+    try:
+        steps.validate_schema(timeline, schema_path, label)
+    except SystemExit:
+        raise
 
 
 def _expand_says(llm_timeline: dict, segments: list[Segment]) -> dict:
-    """Resolve compact `say.seg` references into runtime `say.text` + `say.voice_clip`.
-    Also enforces that every segment is referenced exactly once, in order."""
-    seg_table = {s.seg_id: s.text for s in segments}
-    expected_order = [s.seg_id for s in segments]
-    seen: list[str] = []
-
-    expanded_commands: list[dict] = []
-    for cmd in llm_timeline.get("commands", []):
-        if cmd.get("type") != "say":
-            expanded_commands.append(cmd)
-            continue
-        seg_id = cmd.get("seg", "")
-        if seg_id not in seg_table:
-            raise SystemExit(f"LLM referenced unknown seg_id: {seg_id!r}")
-        seen.append(seg_id)
-        expanded_commands.append({
-            "type": "say",
-            "speaker": cmd["speaker"],
-            "text": seg_table[seg_id],
-            "voice_clip": f"{seg_id}.ogg",
-        })
-
-    if seen != expected_order:
-        missing = [s for s in expected_order if s not in seen]
-        extra = [s for s in seen if s not in expected_order]
-        dupes = [s for s in seen if seen.count(s) > 1]
-        raise SystemExit(
-            "Segment coverage mismatch:\n"
-            f"  expected order: {expected_order}\n"
-            f"  got order:      {seen}\n"
-            f"  missing: {missing}\n  extra: {extra}\n  duplicated: {sorted(set(dupes))}"
-        )
-
-    return {
-        "chapter_id": llm_timeline["chapter_id"],
-        "title": llm_timeline["title"],
-        "commands": expanded_commands,
-    }
-
-
-def _segments_signature(segs: list[Segment]) -> list[dict]:
-    return [asdict(s) for s in segs]
-
-
-_ALL_EXPRS = ("neutral", "smile", "sad", "angry", "surprised", "worried", "thinking")
+    return steps.expand_says(llm_timeline, segments)
 
 
 def _confirm(message: str, *, skip: bool = False) -> None:
@@ -296,9 +235,8 @@ def _run_nanobanana_pipeline(
 def _cmd_build(args: argparse.Namespace) -> None:
     api_log.reset()
     text = Path(args.input).read_text(encoding="utf-8")
-    chs = chapters.split(text)
-    if not chs:
-        raise SystemExit("Chapter splitter returned no chapters")
+    raw_entries = steps.split_and_segment(text)
+    chs = [chapter for chapter, _segs in raw_entries]
     print(f"[pipeline] split into {len(chs)} chapter(s)")
 
     out_dir = Path(args.out)
@@ -308,7 +246,7 @@ def _cmd_build(args: argparse.Namespace) -> None:
     # exists at out_dir; update_from_timeline preserves these across the rebuild.
     prior_cast = cast_mod.load(out_dir)
     prior_roster = prior_cast.get("cast", {})
-    cast = {"cast": {}}
+    initial_cast: dict = {"cast": {}}
     for cid, meta in prior_roster.items():
         carried = {}
         if meta.get("visual_description"):
@@ -316,76 +254,19 @@ def _cmd_build(args: argparse.Namespace) -> None:
         if meta.get("display_name") and meta["display_name"] != cid:
             carried["display_name"] = meta["display_name"]
         if carried:
-            cast["cast"][cid] = carried
+            initial_cast["cast"][cid] = carried
     log = BuildLog(out_dir)
 
-    prompt_template = config.PROMPT_PATH.read_text(encoding="utf-8")
-    llm_schema_text = config.LLM_SCHEMA_PATH.read_text(encoding="utf-8")
-
-    entries: list[bundle.BundleEntry] = []
-    total_segs = 0
-
-    for chapter in chs:
-        segs = segmenter.segment(chapter.id, chapter.body)
-        if not segs:
-            raise SystemExit(f"No segments produced from chapter {chapter.id!r}")
+    total_segs = sum(len(segs) for _ch, segs in raw_entries)
+    for chapter, segs in raw_entries:
         print(f"[pipeline] {chapter.id}: {len(segs)} segments")
-        total_segs += len(segs)
-        log.segments(chapter.id, segs)
 
-        known_cast_text = cast_mod.render_known_cast(cast)
-        cache_key = cache.content_key(
-            "gemini_timeline",
-            config.GEMINI_MODEL,
-            prompt_template,
-            llm_schema_text,
-            chapter.id,
-            chapter.title,
-            chapter.body,
-            _segments_signature(segs),
-            known_cast_text,
-            asset_catalog.BG_IDS,
-            asset_catalog.BGM_IDS,
-            asset_catalog.SE_IDS,
-        )
-
-        llm_timeline: dict | None = None
-        if not args.no_cache:
-            llm_timeline = cache.get("gemini_timeline", cache_key)
-            if llm_timeline is not None:
-                print(f"[pipeline] {chapter.id}: cache hit")
-
-        if llm_timeline is None:
-            for attempt in range(2):
-                print(f"[pipeline] {chapter.id}: calling Gemini model {config.GEMINI_MODEL}"
-                      + (" (retry)" if attempt else ""))
-                t0 = time.time()
-                llm_timeline, rendered_prompt = gemini_client.generate_timeline(
-                    chapter.id, chapter.title, chapter.body, segs, known_cast_text=known_cast_text
-                )
-                elapsed = time.time() - t0
-                log.gemini_prompt(chapter.id, rendered_prompt)
-                log.gemini_response(chapter.id, llm_timeline, elapsed)
-                _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"LLM output for {chapter.id}")
-                try:
-                    _validate_asset_ids(llm_timeline)
-                    break
-                except AssetIdError as e:
-                    log.validation_error(chapter.id, "asset_ids", str(e))
-                    if attempt == 1:
-                        raise SystemExit(f"Asset-ID validation failed after retry: {e}")
-                    print(f"[pipeline] {chapter.id}: {e} — retrying")
-            cache.put("gemini_timeline", cache_key, llm_timeline)
-        else:
-            _validate(llm_timeline, config.LLM_SCHEMA_PATH, f"cached LLM output for {chapter.id}")
-            _validate_asset_ids(llm_timeline)
-
-        timeline = _expand_says(llm_timeline, segs)
-        _validate(timeline, config.SCHEMA_PATH, f"Runtime timeline for {chapter.id}")
-
-        entries.append((chapter, segs, timeline))
-        cast = cast_mod.update_from_timeline(cast, timeline, chapter.id)
-        log.cast_snapshot(chapter.id, cast)
+    entries, cast = steps.generate_timelines(
+        raw_entries,
+        log=log,
+        no_cache=args.no_cache,
+        initial_cast=initial_cast,
+    )
 
     # Derive book title from the first chapter's first non-heading line for
     # multi-chapter inputs; single-chapter inputs keep the chapter title.

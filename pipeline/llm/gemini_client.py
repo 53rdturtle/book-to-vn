@@ -1,59 +1,68 @@
 import json
 import time
-from datetime import datetime
-from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from pipeline import asset_catalog, config
+from pipeline import api_log, asset_catalog, config
 from pipeline.chapters import Chapter
 from pipeline.segmenter import Segment
-
-_FALLBACK_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs" / "prompts"
-
-
-def _dump_call(call_type: str, prompt: str, response: str, note: str = "") -> Path:
-    from pipeline import api_log
-    base = (api_log.OUT_DIR / "logs" / "calls") if api_log.OUT_DIR else _FALLBACK_LOG_DIR
-    base.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    path = base / f"{ts}_{call_type}.txt"
-    header = (
-        f"# call_type={call_type}\n"
-        f"# timestamp={ts}\n"
-        f"# note={note}\n"
-        f"# prompt_length={len(prompt)}\n"
-        f"# response_length={len(response)}\n"
-        f"--- PROMPT ---\n"
-    )
-    path.write_text(header + prompt + "\n--- RESPONSE ---\n" + response + "\n", encoding="utf-8")
-    return path
 
 
 class GeminiError(RuntimeError):
     pass
 
 
-def _render_timeline_prompt(
+def _seg_lines(segments: list[Segment]) -> str:
+    return "\n".join(f"- {s.seg_id}: {s.text}" for s in segments)
+
+
+def _render_speakers_prompt(
     chapter_id: str,
     chapter_title: str,
-    chapter_body: str,
     segments: list[Segment],
     known_cast_text: str,
 ) -> str:
-    schema_text = config.LLM_SCHEMA_PATH.read_text(encoding="utf-8")
-    template = config.PROMPT_PATH.read_text(encoding="utf-8")
-    seg_lines = "\n".join(f"- {s.seg_id}: {s.text}" for s in segments)
+    schema_text = config.LLM_SPEAKERS_SCHEMA_PATH.read_text(encoding="utf-8")
+    template = config.SPEAKERS_PROMPT_PATH.read_text(encoding="utf-8")
     return (
         template.replace("{SCHEMA}", schema_text)
         .replace("{CHAPTER_ID}", chapter_id)
         .replace("{CHAPTER_TITLE}", chapter_title)
-        .replace("{SEGMENTS}", seg_lines)
-        .replace("{CHAPTER_BODY}", chapter_body)
+        .replace("{SEGMENTS}", _seg_lines(segments))
         .replace("{KNOWN_CAST}", known_cast_text)
+    )
+
+
+def _render_backgrounds_prompt(
+    chapter_id: str,
+    chapter_title: str,
+    segments: list[Segment],
+) -> str:
+    schema_text = config.LLM_BACKGROUNDS_SCHEMA_PATH.read_text(encoding="utf-8")
+    template = config.BACKGROUNDS_PROMPT_PATH.read_text(encoding="utf-8")
+    return (
+        template.replace("{SCHEMA}", schema_text)
+        .replace("{CHAPTER_ID}", chapter_id)
+        .replace("{CHAPTER_TITLE}", chapter_title)
+        .replace("{SEGMENTS}", _seg_lines(segments))
         .replace("{BG_MANIFEST}", ", ".join(asset_catalog.BG_IDS))
-        .replace("{BGM_MANIFEST}", ", ".join(asset_catalog.BGM_IDS))
-        .replace("{SE_MANIFEST}", ", ".join(asset_catalog.SE_IDS))
+    )
+
+
+def _render_stage_prompt(
+    chapter_id: str,
+    chapter_title: str,
+    chapter_cast_text: str,
+    speaker_lines: str,
+) -> str:
+    schema_text = config.LLM_STAGE_SCHEMA_PATH.read_text(encoding="utf-8")
+    template = config.STAGE_PROMPT_PATH.read_text(encoding="utf-8")
+    return (
+        template.replace("{SCHEMA}", schema_text)
+        .replace("{CHAPTER_ID}", chapter_id)
+        .replace("{CHAPTER_TITLE}", chapter_title)
+        .replace("{CHAPTER_CAST}", chapter_cast_text)
+        .replace("{SPEAKER_LINES}", speaker_lines)
     )
 
 
@@ -94,7 +103,7 @@ def _call_gemini_json(prompt: str, call_type: str = "unknown") -> dict:
                     f"finish_reason={finish_reason} block_reason={block_reason} "
                     f"safety_ratings={safety} prompt_feedback={pf}"
                 )
-            dump_path = _dump_call(call_type, prompt, text, note=f"attempt={attempt + 1} {note}")
+            dump_path = api_log.dump_call(call_type, prompt, text, note=f"attempt={attempt + 1} {note}")
             if not text.strip():
                 print(f"[gemini_client] call dumped to: {dump_path}")
             result = json.loads(text)
@@ -102,7 +111,6 @@ def _call_gemini_json(prompt: str, call_type: str = "unknown") -> dict:
             usage = resp.usage_metadata
             input_tokens = getattr(usage, "prompt_token_count", 0) or 0
             output_tokens = getattr(usage, "candidates_token_count", 0) or 0
-            from pipeline import api_log
             api_log.current.record(
                 model=config.GEMINI_MODEL,
                 call_type=call_type,
@@ -122,18 +130,49 @@ def _call_gemini_json(prompt: str, call_type: str = "unknown") -> dict:
     raise GeminiError(f"Gemini call failed after retries: {last_err}")
 
 
-def generate_timeline(
+def generate_speakers(
     chapter_id: str,
     chapter_title: str,
-    chapter_body: str,
     segments: list[Segment],
     known_cast_text: str = "None — introduce characters as needed.",
 ) -> tuple[dict, str]:
-    """Returns (llm_timeline, rendered_prompt)."""
-    prompt = _render_timeline_prompt(
-        chapter_id, chapter_title, chapter_body, segments, known_cast_text
-    )
-    return _call_gemini_json(prompt, call_type="timeline"), prompt
+    """Pass A: per-segment speaker attribution + new character IDs.
+
+    Returns (llm_speakers, rendered_prompt).
+    """
+    prompt = _render_speakers_prompt(chapter_id, chapter_title, segments, known_cast_text)
+    return _call_gemini_json(prompt, call_type="speakers"), prompt
+
+
+def generate_backgrounds(
+    chapter_id: str,
+    chapter_title: str,
+    segments: list[Segment],
+) -> tuple[dict, str]:
+    """Pass B: anchored BG changes through the chapter.
+
+    Returns (llm_backgrounds, rendered_prompt).
+    """
+    prompt = _render_backgrounds_prompt(chapter_id, chapter_title, segments)
+    return _call_gemini_json(prompt, call_type="backgrounds"), prompt
+
+
+def generate_stage(
+    chapter_id: str,
+    chapter_title: str,
+    chapter_cast_text: str,
+    speaker_lines: str,
+) -> tuple[dict, str]:
+    """Pass C: character show/hide/expression directions.
+
+    `chapter_cast_text` is a bulleted list of every character id that may
+    appear on stage in this chapter (KNOWN CAST ∪ new characters from Pass A).
+    `speaker_lines` is one line per segment: ``seg_id: speaker — text``.
+
+    Returns (llm_stage, rendered_prompt).
+    """
+    prompt = _render_stage_prompt(chapter_id, chapter_title, chapter_cast_text, speaker_lines)
+    return _call_gemini_json(prompt, call_type="stage"), prompt
 
 
 # --- Chapter splitter fallback --------------------------------------------

@@ -1,0 +1,31 @@
+You are choosing background images for one chapter of prose in a visual novel.
+Your ONLY job in this pass is to decide when the background should change and
+which catalog BG id applies to each segment run. Output MUST be a single JSON
+object that validates against the schema below. Return JSON only — no prose,
+no code fences.
+
+SCHEMA:
+{SCHEMA}
+
+ASSET MANIFEST (you MUST only use ids from this list):
+Backgrounds: {BG_MANIFEST}
+
+RULES:
+- chapter_id MUST equal "{CHAPTER_ID}".
+- `backgrounds` is an ordered list of (before_seg_id, bg_id) entries. The bg
+  applies starting at that segment and continues until the next entry.
+- The first entry MUST anchor at the very first seg in the SEGMENTS list so
+  the chapter has a background from the start.
+- Only emit a new entry when the prose clearly describes a location change
+  (e.g. character travels to a new place, a new scene opens). Do NOT change
+  bg within the same scene.
+- Target 1 to 8 distinct background changes per chapter. If the whole chapter
+  stays in one place, a single entry is correct.
+- Every `bg_id` MUST come from the ASSET MANIFEST above. Do NOT invent new ids.
+- `before_seg_id` values MUST appear in the SEGMENTS list and MUST be in
+  strictly increasing seg order.
+
+CHAPTER TITLE: {CHAPTER_TITLE}
+
+SEGMENTS (in order):
+{SEGMENTS}

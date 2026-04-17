@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VN Pass C — character stage directions",
+  "description": "Character show/hide/expression-change directions, each anchored before a seg.",
+  "type": "object",
+  "required": ["chapter_id", "stage"],
+  "additionalProperties": false,
+  "properties": {
+    "chapter_id": { "type": "string", "pattern": "^ch[0-9]{2,}$" },
+    "stage": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["before_seg_id", "type", "id", "expr", "slot"],
+            "additionalProperties": false,
+            "properties": {
+              "before_seg_id": { "type": "string", "pattern": "^ch[0-9]{2,}_seg[0-9]{3,}$" },
+              "type": { "const": "show" },
+              "id": { "type": "string", "minLength": 1 },
+              "expr": { "enum": ["neutral", "smile", "sad", "angry", "surprised", "worried", "thinking"] },
+              "slot": { "enum": ["left", "middle", "right"] }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["before_seg_id", "type", "id"],
+            "additionalProperties": false,
+            "properties": {
+              "before_seg_id": { "type": "string", "pattern": "^ch[0-9]{2,}_seg[0-9]{3,}$" },
+              "type": { "const": "hide" },
+              "id": { "type": "string", "minLength": 1 }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
