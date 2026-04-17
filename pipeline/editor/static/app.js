@@ -184,6 +184,8 @@ function handleEvent({ type, payload }) {
     const chars = Object.entries(payload.characters || {});
     const bgs = Object.entries(payload.backgrounds || {});
     const names = payload.display_names || {};
+    const charIds = new Set(chars.map(([cid]) => cid));
+    const nameOnlyIds = Object.keys(names).filter((cid) => !charIds.has(cid));
     const styleText = payload.visual_style || "";
     el.querySelector(".body").innerHTML = `
       <div>Edit descriptions below, then click Confirm.</div>
@@ -199,6 +201,12 @@ function handleEvent({ type, payload }) {
           </label>
           <label>description
             <textarea data-char="${cid}" class="autosize">${escapeHtml(desc)}</textarea>
+          </label>
+        </div>`).join("")}
+      ${nameOnlyIds.map((cid) => `
+        <div style="margin-top:8px">
+          <label>minor <code>${cid}</code> display name
+            <input type="text" data-name="${cid}" value="${escapeHtml(names[cid] || cid)}" />
           </label>
         </div>`).join("")}
       ${bgs.map(([bid, desc]) => `

@@ -23,13 +23,13 @@ class NanoBananaError(RuntimeError):
 
 
 _EXPR_HINTS = {
-    "neutral": "calm, neutral expression",
-    "smile": "warm, genuine smile",
-    "sad": "sorrowful, downcast expression",
-    "angry": "angry, furrowed brow and clenched jaw",
-    "surprised": "wide-eyed, surprised expression",
-    "worried": "anxious, worried expression",
-    "thinking": "pensive, thoughtful expression",
+    "neutral": "calm, relaxed expression",
+    "smile": "soft, natural smile",
+    "sad": "subtly downcast expression",
+    "angry": "mildly annoyed, slight frown",
+    "surprised": "subtly surprised, slightly raised eyebrows",
+    "worried": "faintly concerned expression",
+    "thinking": "quietly thoughtful expression",
 }
 
 

@@ -34,10 +34,11 @@ GUIDANCE:
   (shared style language where appropriate).
 - For backgrounds, describe the scene's setting, lighting, time of day, and
   atmosphere. Assume a wide 16:9 painted VN background aesthetic.
-- For display_names: use the name as it appears in the source text (the IDs
-  may be romanized/pinyin, but the display name should be in the book's
-  original language — Chinese characters for Chinese books, etc.). These are
-  shown verbatim on screen as the speaker label.
+- For display_names: provide one for EVERY ID listed in BOTH the CHARACTER IDs
+  and MINOR CHARACTER IDs sections below. Use the name as it appears in the
+  source text (the IDs may be romanized/pinyin, but the display name should be
+  in the book's original language — Chinese characters for Chinese books, etc.).
+  These are shown verbatim on screen as the speaker label.
 - For minor_silhouettes: classify each minor character listed below by
   silhouette_type. Valid values are exactly: "adult_male", "adult_female",
   "child_male", "child_female", "elder_male", "elder_female". Pick the one

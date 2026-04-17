@@ -197,15 +197,26 @@ def _run_nanobanana_pipeline(
         if not roster.get(cid, {}).get("silhouette_type")
     ]
 
-    if chars_needing_desc or bgs_needing_desc or minors_needing_sil:
+    def _has_display_name(cid: str) -> bool:
+        name = roster.get(cid, {}).get("display_name", "")
+        return bool(name) and name != cid
+
+    all_chars = list(dict.fromkeys(major_chars + minor_chars))
+    names_needing = [cid for cid in all_chars if not _has_display_name(cid)]
+    name_only_major = [cid for cid in names_needing
+                       if cid in major_chars and cid not in chars_needing_desc]
+    name_only_minor = [cid for cid in names_needing
+                       if cid in minor_chars and cid not in minors_needing_sil]
+
+    if chars_needing_desc or bgs_needing_desc or minors_needing_sil or names_needing:
         excerpt = _collect_excerpt(entries)
         print(f"\n[nanobanana] proposing descriptions via {config.GEMINI_MODEL}...")
         proposed = visual_descriptions.propose(
             book_title=book_title,
-            char_ids=chars_needing_desc,
+            char_ids=sorted(set(chars_needing_desc) | set(name_only_major)),
             bg_ids=bgs_needing_desc,
             excerpt=excerpt,
-            minor_char_ids=minors_needing_sil,
+            minor_char_ids=sorted(set(minors_needing_sil) | set(name_only_minor)),
         )
         if not visual_style:
             visual_style = proposed.get("visual_style", "")
@@ -216,6 +227,7 @@ def _run_nanobanana_pipeline(
             desc = proposed["characters"].get(cid, "")
             char_descs[cid] = _editable_input(f"Character '{cid}'", desc, skip=skip_confirm)
             cast = cast_mod.set_visual_description(cast, cid, char_descs[cid])
+        for cid in names_needing:
             name = proposed.get("display_names", {}).get(cid, "").strip()
             if name:
                 cast = cast_mod.set_display_name(cast, cid, name)
@@ -224,8 +236,9 @@ def _run_nanobanana_pipeline(
             bg_descs[bg_id] = _editable_input(f"Background '{bg_id}'", desc, skip=skip_confirm)
             stored_bgs = bg_mod.set_visual_description(stored_bgs, bg_id, bg_descs[bg_id])
         for cid, stype in proposed.get("minor_silhouettes", {}).items():
-            cast = cast_mod.set_silhouette_type(cast, cid, stype)
-            print(f"[nanobanana] minor '{cid}' → silhouette: {stype}")
+            if cid in minors_needing_sil:
+                cast = cast_mod.set_silhouette_type(cast, cid, stype)
+                print(f"[nanobanana] minor '{cid}' → silhouette: {stype}")
 
     bg_mod.save(out_dir, stored_bgs)
 

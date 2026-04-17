@@ -283,6 +283,14 @@ def propose_missing_descriptions(
             or stored_cast.get(cid, {}).get("visual_description")
         )
 
+    def _stored_display_name(cid: str) -> str:
+        name = (
+            roster.get(cid, {}).get("display_name")
+            or stored_cast.get(cid, {}).get("display_name")
+            or ""
+        )
+        return name if name and name != cid else ""
+
     chars_needing = [cid for cid in major_chars if not _has_char_desc(cid)]
     bgs_needing = sorted(
         bid for bid in bg_ids
@@ -293,9 +301,23 @@ def propose_missing_descriptions(
         if not (roster.get(cid, {}).get("silhouette_type")
                 or stored_cast.get(cid, {}).get("silhouette_type"))
     ]
+    all_chars = list(dict.fromkeys(major_chars + list(minor_chars or [])))
+    names_needing = [cid for cid in all_chars if not _stored_display_name(cid)]
+    # Chars missing only a name (desc/silhouette already present) — include them
+    # in the LLM call so it can propose a display_name, but discard any extra
+    # desc/silhouette it returns for them.
+    name_only_major = [cid for cid in names_needing
+                       if cid in major_chars and cid not in chars_needing]
+    name_only_minor = [cid for cid in names_needing
+                       if cid in (minor_chars or []) and cid not in minors_needing]
+    char_ids_for_llm = sorted(set(chars_needing) | set(name_only_major))
+    minor_ids_for_llm = sorted(set(minors_needing) | set(name_only_minor))
+
     print(f"[descriptions] chars_needing (will query Gemini)={chars_needing}")
     print(f"[descriptions] bgs_needing (will query Gemini)={bgs_needing}")
     print(f"[descriptions] minors_needing silhouette classification={minors_needing}")
+    print(f"[descriptions] names_needing={names_needing} "
+          f"(name-only major={name_only_major}, minor={name_only_minor})")
 
     existing_chars: dict[str, str] = {}
     for cid in major_chars:
@@ -306,12 +328,8 @@ def propose_missing_descriptions(
         if desc:
             existing_chars[cid] = desc
     existing_names = {
-        cid: (
-            roster.get(cid, {}).get("display_name")
-            or stored_cast.get(cid, {}).get("display_name")
-            or cid
-        )
-        for cid in major_chars
+        cid: _stored_display_name(cid) or cid
+        for cid in all_chars
     }
     existing_bgs = {
         bid: bg_mod.get_visual_description(stored_bgs, bid)
@@ -323,17 +341,18 @@ def propose_missing_descriptions(
 
     proposed = {"visual_style": "", "characters": {}, "display_names": {},
                 "minor_silhouettes": {}, "backgrounds": {}}
-    if chars_needing or bgs_needing or minors_needing:
+    if chars_needing or bgs_needing or minors_needing or names_needing:
         print(f"[descriptions] calling Gemini for {len(chars_needing)} chars + "
-              f"{len(bgs_needing)} bgs + {len(minors_needing)} minor classifications"
+              f"{len(bgs_needing)} bgs + {len(minors_needing)} minor classifications + "
+              f"{len(names_needing)} display names"
               + ("" if existing_style else " (also proposing visual_style)"))
         excerpt = collect_excerpt(entries)
         proposed = visual_descriptions.propose(
             book_title=book_title,
-            char_ids=chars_needing,
+            char_ids=char_ids_for_llm,
             bg_ids=bgs_needing,
             excerpt=excerpt,
-            minor_char_ids=minors_needing,
+            minor_char_ids=minor_ids_for_llm,
         )
     else:
         print(f"[descriptions] nothing needed — skipping Gemini call entirely"
@@ -362,16 +381,19 @@ def propose_missing_descriptions(
     dropped_chars = sorted(set(raw_proposed_chars) - set(chars_needing))
     dropped_bgs = sorted(set(raw_proposed_bgs) - set(bgs_needing))
     dropped_silhouettes = sorted(set(raw_proposed_silhouettes) - set(minors_needing))
+    dropped_names = sorted(set(raw_proposed_names) - set(names_needing))
     if dropped_chars:
         print(f"[descriptions] dropping hallucinated chars from LLM: {dropped_chars}")
     if dropped_bgs:
         print(f"[descriptions] dropping hallucinated bgs from LLM: {dropped_bgs}")
     if dropped_silhouettes:
         print(f"[descriptions] dropping hallucinated minor silhouettes from LLM: {dropped_silhouettes}")
+    if dropped_names:
+        print(f"[descriptions] dropping hallucinated display_names from LLM: {dropped_names}")
 
     filtered_chars = {k: v for k, v in raw_proposed_chars.items() if k in chars_needing}
     filtered_bgs = {k: v for k, v in raw_proposed_bgs.items() if k in bgs_needing}
-    filtered_names = {k: v for k, v in raw_proposed_names.items() if k in chars_needing}
+    filtered_names = {k: v for k, v in raw_proposed_names.items() if k in names_needing and v}
     filtered_silhouettes = {k: v for k, v in raw_proposed_silhouettes.items() if k in minors_needing}
 
     result = {
