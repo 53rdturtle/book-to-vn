@@ -63,7 +63,56 @@ $("#refresh-bundle").onclick = refreshBundle;
 $("#bundle-dir").addEventListener("change", refreshBundle);
 window.addEventListener("DOMContentLoaded", () => {
   if ($("#bundle-dir").value.trim()) refreshBundle();
+  initBackends();
 });
+
+async function initBackends() {
+  const sel = $("#image-gen");
+  const qualityLabel = $("#image-quality-label");
+  const qualitySel = $("#image-quality");
+  let info = { backends: ["placeholder", "nanobanana", "openai"],
+               qualities: ["low", "medium", "high"],
+               quality_default: "medium",
+               quality_backends: ["openai"] };
+  try {
+    const r = await fetch("/api/backends");
+    if (r.ok) info = await r.json();
+  } catch {}
+  sel.innerHTML = "";
+  info.backends.forEach((name) => {
+    const o = document.createElement("option");
+    o.value = name;
+    o.textContent = name;
+    sel.appendChild(o);
+  });
+  const saved = localStorage.getItem("image_gen") || "";
+  const preferred = info.backends.includes(saved) ? saved
+                  : (info.backends.includes("openai") ? "openai" : info.backends[0]);
+  sel.value = preferred;
+
+  qualitySel.innerHTML = "";
+  info.qualities.forEach((q) => {
+    const o = document.createElement("option");
+    o.value = q;
+    o.textContent = q;
+    if (q === info.quality_default) o.selected = true;
+    qualitySel.appendChild(o);
+  });
+  const savedQuality = localStorage.getItem("image_quality");
+  if (savedQuality && info.qualities.includes(savedQuality)) qualitySel.value = savedQuality;
+
+  const updateQualityVisibility = () => {
+    qualityLabel.hidden = !info.quality_backends.includes(sel.value);
+  };
+  updateQualityVisibility();
+  sel.addEventListener("change", () => {
+    localStorage.setItem("image_gen", sel.value);
+    updateQualityVisibility();
+  });
+  qualitySel.addEventListener("change", () => {
+    localStorage.setItem("image_quality", qualitySel.value);
+  });
+}
 
 async function refreshBundle() {
   const path = $("#bundle-dir").value.trim();
@@ -95,6 +144,7 @@ $("#start-btn").onclick = async () => {
   }
   const out_dir = $("#bundle-dir").value.trim();
   const image_gen = $("#image-gen").value;
+  const image_quality = $("#image-quality").value;
   const no_cache = $("#no-cache").checked;
   const skip_confirm = $("#skip-confirm").checked;
   if (!text.trim()) { alert("Source text is required"); return; }
@@ -104,7 +154,7 @@ $("#start-btn").onclick = async () => {
   const r = await fetch("/api/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, out_dir, image_gen, no_cache, skip_confirm }),
+    body: JSON.stringify({ text, out_dir, image_gen, image_quality, no_cache, skip_confirm }),
   });
   const { job_id } = await r.json();
   currentJob = job_id;

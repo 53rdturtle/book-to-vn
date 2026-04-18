@@ -420,6 +420,8 @@ def save_descriptions(
     display_names: dict[str, str] | None = None,
     visual_style: str = "",
     minor_silhouettes: dict[str, str] | None = None,
+    image_gen: str | None = None,
+    image_quality: str | None = None,
 ) -> dict:
     """Persist edited descriptions into cast.json and backgrounds.json. Returns updated cast."""
     for cid, desc in char_descs.items():
@@ -434,6 +436,10 @@ def save_descriptions(
 
     stored_bgs = bg_mod.load(out_dir)
     stored_bgs = bg_mod.set_visual_style(stored_bgs, visual_style)
+    if image_gen:
+        stored_bgs = bg_mod.set_image_gen(stored_bgs, image_gen)
+    if image_quality:
+        stored_bgs = bg_mod.set_image_quality(stored_bgs, image_quality)
     for bid, desc in bg_descs.items():
         stored_bgs = bg_mod.set_visual_description(stored_bgs, bid, desc)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -444,9 +450,25 @@ def save_descriptions(
 
 # ---------- per-asset generation (idempotent unless force=True) ----------
 
+def image_adapter(
+    backend: str = "nanobanana", *,
+    defer_matte: bool = False, on_matte_done=None,
+    style: str | None = None, quality: str | None = None,
+):
+    """Factory for image adapters — dispatches through the backend registry."""
+    from pipeline.assets import registry
+    return registry.create(
+        backend,
+        style=style, defer_matte=defer_matte, on_matte_done=on_matte_done,
+        quality=quality,
+    )
+
+
 def _nano_adapter(*, defer_matte: bool = False, on_matte_done=None, style: str | None = None):
-    from pipeline.assets.nanobanana import NanoBananaAdapter
-    return NanoBananaAdapter(style=style, defer_matte=defer_matte, on_matte_done=on_matte_done)
+    """Back-compat alias — new callers should use `image_adapter(backend, ...)`."""
+    return image_adapter(
+        "nanobanana", defer_matte=defer_matte, on_matte_done=on_matte_done, style=style,
+    )
 
 
 def baseline_path(out_dir: Path) -> Path:

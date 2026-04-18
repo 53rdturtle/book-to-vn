@@ -53,6 +53,22 @@ def set_visual_style(backgrounds: dict, style: str) -> dict:
     return {**backgrounds, "visual_style": style}
 
 
+def get_image_gen(backgrounds: dict) -> str:
+    return backgrounds.get("image_gen", "")
+
+
+def set_image_gen(backgrounds: dict, name: str) -> dict:
+    return {**backgrounds, "image_gen": name}
+
+
+def get_image_quality(backgrounds: dict) -> str:
+    return backgrounds.get("image_quality", "")
+
+
+def set_image_quality(backgrounds: dict, quality: str) -> dict:
+    return {**backgrounds, "image_quality": quality}
+
+
 def render_known_backgrounds(backgrounds: dict) -> str:
     """Bullet list of `- bg_id: description` for Pass B cross-chapter reuse."""
     roster = backgrounds.get("backgrounds", {}) or {}

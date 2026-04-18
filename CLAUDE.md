@@ -56,8 +56,11 @@ pipeline/
     prompts/visual_descriptions.txt  # propose descriptions from book title + excerpt (M4)
   assets/
     adapter.py            # abstract ImageAdapter interface (M4)
+    registry.py           # backend factory registry — lazy-load image adapters by name
     placeholders.py       # PlaceholderAdapter: scan timeline → generate Pillow BGs/chars
     nanobanana.py         # NanoBananaAdapter: Gemini 3.1 Flash Image real image gen (M4)
+    openai_image.py       # OpenAIImageAdapter: gpt-image-1-mini image gen (selectable quality)
+    _image_common.py      # shared helpers: save_resized, hash_bytes, EXPR_HINTS, DeferredMatteMixin
     matte.py              # ToonOut background removal for character images (anime-specialized BiRefNet fine-tune)
   editor/
     __init__.py
@@ -114,6 +117,16 @@ NANO_BANANA_CONCURRENCY=4 python -m pipeline build samples/short.txt -o out/shor
 # Build with NanoBanana, auto-accepting all descriptions and confirmations
 python -m pipeline build samples/short.txt -o out/short --image-gen nanobanana --skip-image-gen-confirmation
 
+# Build with OpenAI GPT Image 1 mini (cost-effective alternative; requires OPENAI_API_KEY)
+export OPENAI_API_KEY="sk-proj-..."
+python -m pipeline build samples/short.txt -o out/short --image-gen openai --image-quality low
+
+# Build with OpenAI at medium quality (default)
+python -m pipeline build samples/short.txt -o out/short --image-gen openai
+
+# Build with OpenAI at high quality (higher token cost)
+python -m pipeline build samples/short.txt -o out/short --image-gen openai --image-quality high
+
 # Multi-chapter (Chinese primary, English regression)
 python -m pipeline build samples/multi_zh.txt -o out/multi_zh
 python -m pipeline build samples/multi_en.txt -o out/multi_en
@@ -156,13 +169,18 @@ python -m pipeline editor
 
 **Error Handling:** Transient failures retry 3× with backoff. Schema validation failures raise loudly. Asset-ID validation retries once with feedback.
 
-### Image Generation (M4)
+### Image Generation (M4+)
 
-**Model:** `gemini-3.1-flash-image-preview` (Nano Banana 2, configurable via `NANO_BANANA_MODEL` env).
+**Backends:** Pluggable via registry (`pipeline/assets/registry.py`). Available backends:
+- **`nanobanana`** (default): Gemini 3.1 Flash Image (`gemini-3.1-flash-image-preview`). Fixed output 512px. Cost ~$0.10 per image baseline.
+- **`openai`**: OpenAI GPT Image 1 mini (`gpt-image-1-mini`). Quality `low`/`medium`/`high`. Cost scales with quality (medium ~$0.01 per image, high ~$0.05 per image).
+- **`placeholder`**: Pillow-drawn silhouettes (free, dev-only).
 
-**Output:** 512 resolution (configurable via `NANO_BANANA_IMAGE_SIZE` env; valid values: `"512"`, `"1K"`, `"2K"`, `"4K"`). Default 512 for cost-efficiency during development.
+**Nanobanana Config:** `NANO_BANANA_MODEL` env (default `gemini-3.1-flash-image-preview`). Size: `NANO_BANANA_IMAGE_SIZE` (default `512`; valid: `512`, `1K`, `2K`, `4K`). Concurrency: `NANO_BANANA_CONCURRENCY` (default 10).
 
-**Workflow:** `--image-gen nanobanana` triggers 3-phase pipeline:
+**OpenAI Config:** `OPENAI_API_KEY` env (required). Model: `OPENAI_IMAGE_MODEL` (default `gpt-image-1-mini`). Quality: `OPENAI_IMAGE_QUALITY` env or `--image-quality low|medium|high|auto` CLI flag (default `medium`). Concurrency: `OPENAI_IMAGE_CONCURRENCY` (default 4).
+
+**Workflow:** `--image-gen <backend>` (+ `--image-quality` if openai) triggers 3-phase pipeline:
 1. LLM proposes `visual_style` (concise art style description matching book tone/genre) + character/background visual descriptions (leans on knowledge of well-known source works)
 2. User confirms or edits style and descriptions via stdin (CLI) or web UI (editor)
 3. **Phase A:** Generate baseline character (style anchor for entire book, uses proposed visual_style)
@@ -179,7 +197,7 @@ python -m pipeline editor
 
 **Caching:** Image cache at `<out_dir>/cache/nanobanana_*` keyed by model + prompt + reference hash. Subsequent builds reuse.
 
-**Descriptions:** LLM generates `visual_style` (art style for all images), `visual_description` (character/background appearance), and `display_name` (speaker label in source language, e.g., Chinese characters for Chinese books). Visual style is stored in `backgrounds.json` and applies uniformly to baseline, character, and background generation. Character descriptions and names are stored in `cast.json` and reused across chapters. Background descriptions are stored in `backgrounds.json` and similarly reused. Edit any entry and delete the corresponding PNG to regenerate with a new description.
+**Descriptions:** LLM generates `visual_style` (art style for all images), `visual_description` (character/background appearance), and `display_name` (speaker label in source language, e.g., Chinese characters for Chinese books). Visual style is stored in `backgrounds.json` and applies uniformly to baseline, character, and background generation. Character descriptions and names are stored in `cast.json` and reused across chapters. Background descriptions are stored in `backgrounds.json` and similarly reused. Edit any entry and delete the corresponding PNG to regenerate with a new description. Backend and quality are also persisted in `backgrounds.json` so editor regeneration reuses the same adapter.
 
 **Background Removal:** Character images are automatically matted using ToonOut (fine-tuned BiRefNet trained on 1.2K anime images, 99.5% pixel accuracy). Removes gray placeholder backgrounds without halos or color fringing. Runs on CPU after image generation. Configurable via `CHAR_MATTE` env (`"toonout"` default; `"none"` to disable).
 
@@ -219,11 +237,11 @@ Slots: `left`, `middle`, `right` (fixed enum). Expressions: `neutral`, `smile`, 
 bundle/
   book.json                  # { title, chapters: [...] }
   cast.json                  # character roster with display names, first chapter, appearance counts, visual descriptions (M2+), silhouette types for minor chars (M4+)
-  backgrounds.json           # visual_style (art style for all images) + background descriptions, persisted for reuse (M4+)
+  backgrounds.json           # visual_style, image_gen (backend name), image_quality (quality setting), + background descriptions — persisted for reuse and editor regeneration
   chapters/ch01.json         # runtime timeline
   assets/
-    bg/bg_*.png              # 1920×1080 placeholder or NanoBanana BGs
-    char/<id>/<expr>.png     # 600×1200 silhouette chars or NanoBanana images
+    bg/bg_*.png              # 1920×1080 placeholder or real BGs (Gemini/OpenAI)
+    char/<id>/<expr>.png     # 600×1200 silhouette chars or real images
     bgm/<id>.ogg             # silent 5-sec OGGs
     se/<id>.ogg              # silent 0.8-sec OGGs
   voice/ch01_seg*.ogg        # silent OGGs, length ∝ text length

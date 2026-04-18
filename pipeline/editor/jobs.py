@@ -29,6 +29,7 @@ class Job:
     out_dir: Path
     text: str
     image_gen: str
+    image_quality: str | None = None
     skip_confirm: bool = False
     no_cache: bool = False
 
@@ -50,12 +51,14 @@ _LOCK = threading.Lock()
 
 
 def create(out_dir: Path, text: str, image_gen: str, *,
+           image_quality: str | None = None,
            skip_confirm: bool = False, no_cache: bool = False) -> Job:
     job = Job(
         job_id=uuid.uuid4().hex[:12],
         out_dir=out_dir,
         text=text,
         image_gen=image_gen,
+        image_quality=image_quality,
         skip_confirm=skip_confirm,
         no_cache=no_cache,
     )
@@ -157,7 +160,7 @@ def _run_body(job: Job) -> None:
         char_descs: dict[str, str] = {}
         bg_descs: dict[str, str] = {}
 
-        if job.image_gen == "nanobanana":
+        if job.image_gen != "placeholder":
             bg_ids, char_exprs = steps.collect_manifests(entries)
             major, minor = steps.classify_chars(cast, char_exprs)
             _emit(job, "manifests", bg_ids=sorted(bg_ids),
@@ -193,14 +196,19 @@ def _run_body(job: Job) -> None:
                 out_dir, cast, char_descs, bg_descs, display_names,
                 visual_style=visual_style,
                 minor_silhouettes=minor_silhouettes,
+                image_gen=job.image_gen,
+                image_quality=job.image_quality,
             )
 
             def _on_matte_done(path: Path) -> None:
                 _emit(job, "asset_updated", path=str(path),
                       mtime=path.stat().st_mtime if path.exists() else 0)
 
-            adapter = steps._nano_adapter(defer_matte=True, on_matte_done=_on_matte_done,
-                                          style=visual_style or None)
+            adapter = steps.image_adapter(
+                job.image_gen,
+                defer_matte=True, on_matte_done=_on_matte_done,
+                style=visual_style or None, quality=job.image_quality,
+            )
 
             # Phase A: baseline
             _emit(job, "status", message="generating baseline")
@@ -213,7 +221,8 @@ def _run_body(job: Job) -> None:
                     _emit(job, "awaiting_confirm", step="baseline")
                     job.baseline_gate.wait()
 
-            max_workers = max(1, config.NANO_BANANA_CONCURRENCY)
+            from pipeline.assets import registry as _registry
+            max_workers = max(1, _registry.backend_concurrency(job.image_gen))
 
             # Phase B: basic chars (parallel)
             def _basic(cid: str):

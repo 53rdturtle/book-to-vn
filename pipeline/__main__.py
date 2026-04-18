@@ -76,20 +76,22 @@ def _editable_input(label: str, default: str, *, skip: bool = False) -> str:
     return ans or default
 
 
-def _run_nanobanana_pipeline(
+def _run_image_pipeline(
     out_dir: Path,
     entries: list[bundle.BundleEntry],
     cast: dict,
     book_title: str,
     *,
+    backend: str,
+    quality: str | None = None,
     skip_confirm: bool = False,
 ) -> tuple[ImageAdapter, dict, dict]:
     """Execute 3-phase char pipeline + BG proposal. Returns (adapter, visual_descriptions, cast).
 
-    Only major characters go through NanoBanana; minor characters are left for
-    the PlaceholderAdapter path inside write_bundle_multi.
+    Only major characters go through the real-image backend; minor characters
+    are left for the PlaceholderAdapter path inside write_bundle_multi.
     """
-    from pipeline.assets.nanobanana import NanoBananaAdapter
+    from pipeline.assets import registry
 
     bg_ids, char_exprs = _collect_manifests(entries)
     roster = cast.get("cast", {})
@@ -100,11 +102,11 @@ def _run_nanobanana_pipeline(
     )
     minor_chars = sorted(set(char_exprs) - set(major_chars))
 
-    print(f"[nanobanana] major characters (>= {config.MAJOR_CHAR_MIN_APPEARANCES} appearances): "
+    print(f"[{backend}] major characters (>= {config.MAJOR_CHAR_MIN_APPEARANCES} appearances): "
           f"{major_chars or '(none)'}")
     if minor_chars:
-        print(f"[nanobanana] minor characters (using placeholder silhouettes): {minor_chars}")
-    print(f"[nanobanana] backgrounds to generate: {sorted(bg_ids) or '(none)'}")
+        print(f"[{backend}] minor characters (using placeholder silhouettes): {minor_chars}")
+    print(f"[{backend}] backgrounds to generate: {sorted(bg_ids) or '(none)'}")
 
     stored_bgs = bg_mod.load(out_dir)
 
@@ -149,7 +151,7 @@ def _run_nanobanana_pipeline(
 
     if chars_needing_desc or bgs_needing_desc or minors_needing_sil or names_needing:
         excerpt = _collect_excerpt(entries)
-        print(f"\n[nanobanana] proposing descriptions via {config.GEMINI_MODEL}...")
+        print(f"\n[{backend}] proposing descriptions via {config.GEMINI_MODEL}...")
         proposed = visual_descriptions.propose(
             book_title=book_title,
             char_ids=sorted(set(chars_needing_desc) | set(name_only_major)),
@@ -177,24 +179,29 @@ def _run_nanobanana_pipeline(
         for cid, stype in proposed.get("minor_silhouettes", {}).items():
             if cid in minors_needing_sil:
                 cast = cast_mod.set_silhouette_type(cast, cid, stype)
-                print(f"[nanobanana] minor '{cid}' → silhouette: {stype}")
+                print(f"[{backend}] minor '{cid}' → silhouette: {stype}")
 
+    # Persist backend + quality alongside the visual style so the editor's
+    # regenerate path uses the same adapter later.
+    stored_bgs = bg_mod.set_image_gen(stored_bgs, backend)
+    if quality:
+        stored_bgs = bg_mod.set_image_quality(stored_bgs, quality)
     bg_mod.save(out_dir, stored_bgs)
 
-    adapter = NanoBananaAdapter(style=visual_style or None)
+    adapter = registry.create(backend, style=visual_style or None, quality=quality)
 
     # --- Phase A: baseline character ---
     baseline_path = out_dir / config.BUNDLE_CHAR_DIR / "_baseline" / "neutral.png"
     if not baseline_path.exists():
-        print(f"\n[nanobanana] Phase A: generating baseline character art style...")
+        print(f"\n[{backend}] Phase A: generating baseline character art style...")
         adapter.generate_baseline(baseline_path)
-    print(f"[nanobanana] baseline at: {baseline_path}")
+    print(f"[{backend}] baseline at: {baseline_path}")
     if major_chars:
         _confirm("Review the baseline image above. This anchors the art style for all characters.", skip=skip_confirm)
 
     # --- Phase B: basic (neutral) character refs ---
     if major_chars:
-        print(f"\n[nanobanana] Phase B: generating basic character refs (neutral)...")
+        print(f"\n[{backend}] Phase B: generating basic character refs (neutral)...")
         for cid in major_chars:
             char_out = out_dir / config.BUNDLE_CHAR_DIR / cid / "neutral.png"
             if not char_out.exists():
@@ -210,7 +217,7 @@ def _run_nanobanana_pipeline(
         exprs = sorted(char_exprs.get(cid, set()) - {"neutral"})
         if not exprs:
             continue
-        print(f"\n[nanobanana] Phase C: expressions for '{cid}': {exprs}")
+        print(f"\n[{backend}] Phase C: expressions for '{cid}': {exprs}")
         for expr in exprs:
             char_out = out_dir / config.BUNDLE_CHAR_DIR / cid / f"{expr}.png"
             if not char_out.exists():
@@ -219,7 +226,7 @@ def _run_nanobanana_pipeline(
 
     # --- Backgrounds ---
     if bg_ids:
-        print(f"\n[nanobanana] generating {len(bg_ids)} background(s)...")
+        print(f"\n[{backend}] generating {len(bg_ids)} background(s)...")
         for bg_id in sorted(bg_ids):
             bg_out = out_dir / config.BUNDLE_BG_DIR / f"{bg_id}.png"
             if not bg_out.exists():
@@ -278,10 +285,12 @@ def _cmd_build(args: argparse.Namespace) -> None:
 
     image_adapter: ImageAdapter | None = None
     visual: dict | None = None
-    if args.image_gen == "nanobanana":
+    if args.image_gen != "placeholder":
         out_dir.mkdir(parents=True, exist_ok=True)
-        image_adapter, visual, cast = _run_nanobanana_pipeline(
+        image_adapter, visual, cast = _run_image_pipeline(
             out_dir, entries, cast, book_title,
+            backend=args.image_gen,
+            quality=getattr(args, "image_quality", None),
             skip_confirm=args.skip_image_gen_confirmation,
         )
 
@@ -316,9 +325,14 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("input", help="Path to source .txt")
     b.add_argument("-o", "--out", required=True, help="Output bundle directory")
     b.add_argument("--no-cache", action="store_true", help="Bypass the content-hash cache")
+    from pipeline.assets import registry as _registry
     b.add_argument(
-        "--image-gen", choices=["placeholder", "nanobanana"], default="placeholder",
+        "--image-gen", choices=_registry.available(), default="placeholder",
         help="Image generation backend (default: placeholder)",
+    )
+    b.add_argument(
+        "--image-quality", choices=["low", "medium", "high", "auto"], default=None,
+        help="Image quality for backends that support it (openai). Defaults to env OPENAI_IMAGE_QUALITY or 'medium'.",
     )
     b.add_argument(
         "--skip-image-gen-confirmation", action="store_true",

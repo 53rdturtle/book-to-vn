@@ -11,6 +11,12 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 NANO_BANANA_MODEL = os.environ.get("NANO_BANANA_MODEL", "gemini-3.1-flash-image-preview")
 NANO_BANANA_IMAGE_SIZE = os.environ.get("NANO_BANANA_IMAGE_SIZE", "512")
 NANO_BANANA_CONCURRENCY = int(os.environ.get("NANO_BANANA_CONCURRENCY", "10"))
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1-mini")
+OPENAI_IMAGE_QUALITY = os.environ.get("OPENAI_IMAGE_QUALITY", "medium")  # low|medium|high|auto
+OPENAI_IMAGE_CONCURRENCY = int(os.environ.get("OPENAI_IMAGE_CONCURRENCY", "4"))
+
 IMAGE_GEN_STYLE = os.environ.get("IMAGE_GEN_STYLE", "anime visual novel style")
 MAJOR_CHAR_MIN_APPEARANCES = int(os.environ.get("MAJOR_CHAR_MIN_APPEARANCES", "10"))
 CHAR_MATTE = os.environ.get("CHAR_MATTE", "toonout")  # "toonout" | "none"

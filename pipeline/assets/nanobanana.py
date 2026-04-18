@@ -4,10 +4,7 @@ Generates real BG + character images via the `google-genai` SDK. Uses image
 editing with reference images to keep characters visually consistent across
 expressions and chapters.
 """
-import hashlib
 import io
-import os
-import threading
 import time
 from pathlib import Path
 
@@ -15,22 +12,17 @@ from PIL import Image
 
 from pipeline import api_log, cache, config
 from pipeline.assets.adapter import ImageAdapter
+from pipeline.assets._image_common import (
+    DeferredMatteMixin,
+    EXPR_HINTS,
+    hash_bytes,
+    save_resized,
+)
 from pipeline.assets.placeholders import BG_SIZE, CHAR_SIZE
 
 
 class NanoBananaError(RuntimeError):
     pass
-
-
-_EXPR_HINTS = {
-    "neutral": "calm, relaxed expression",
-    "smile": "soft, natural smile",
-    "sad": "subtly downcast expression",
-    "angry": "mildly annoyed, slight frown",
-    "surprised": "subtly surprised, slightly raised eyebrows",
-    "worried": "faintly concerned expression",
-    "thinking": "quietly thoughtful expression",
-}
 
 
 def _client():
@@ -130,65 +122,13 @@ def _call_image(contents, aspect_ratio: str, call_type: str = "image") -> bytes:
     raise NanoBananaError(f"Nano Banana call failed after retries: {last_err}")
 
 
-def _hash_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _save_resized(
-    img_bytes: bytes, out_path: Path, size: tuple[int, int], mode: str,
-    matte: bool = False,
-) -> None:
-    img = Image.open(io.BytesIO(img_bytes))
-    if matte and config.CHAR_MATTE == "toonout":
-        from pipeline.assets.matte import remove_background
-        img = remove_background(img)
-    if mode == "RGBA" and img.mode != "RGBA":
-        img = img.convert("RGBA")
-    elif mode == "RGB" and img.mode != "RGB":
-        img = img.convert("RGB")
-    if mode == "RGBA":
-        bbox = img.getchannel("A").getbbox()
-        if bbox:
-            img = img.crop(bbox)
-    tw, th = size
-    iw, ih = img.size
-    scale = min(tw / iw, th / ih)
-    new_w, new_h = round(iw * scale), round(ih * scale)
-    img = img.resize((new_w, new_h), Image.LANCZOS)
-    canvas = Image.new(mode, size, (0, 0, 0, 0) if mode == "RGBA" else (0, 0, 0))
-    canvas.paste(img, ((tw - new_w) // 2, th - new_h), img if mode == "RGBA" else None)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(out_path, format="PNG")
-
-
-class NanoBananaAdapter(ImageAdapter):
+class NanoBananaAdapter(DeferredMatteMixin, ImageAdapter):
     def __init__(self, style: str | None = None, *, defer_matte: bool = False,
-                 on_matte_done=None) -> None:
+                 on_matte_done=None, **_unused) -> None:
         self.style = style or config.IMAGE_GEN_STYLE
         self.defer_matte = defer_matte
         self.on_matte_done = on_matte_done
-        self._matte_threads: list[threading.Thread] = []
-
-    def _matte_later(self, img_bytes: bytes, out_path: Path) -> None:
-        """Write the final matted PNG atomically; safe if ref readers race."""
-        def _worker():
-            try:
-                tmp = out_path.with_name(out_path.name + ".matting.tmp")
-                _save_resized(img_bytes, tmp, CHAR_SIZE, mode="RGBA", matte=True)
-                os.replace(tmp, out_path)
-                if self.on_matte_done:
-                    self.on_matte_done(out_path)
-            except Exception as e:  # noqa: BLE001
-                print(f"[nanobanana] deferred matte failed for {out_path}: {e}")
-        t = threading.Thread(target=_worker, daemon=True)
-        t.start()
-        self._matte_threads.append(t)
-
-    def drain_matte(self) -> None:
-        """Block until all deferred matte jobs finish."""
-        for t in self._matte_threads:
-            t.join()
-        self._matte_threads.clear()
+        self._init_matte()
 
     # -- Backgrounds -----------------------------------------------------
 
@@ -203,7 +143,7 @@ class NanoBananaAdapter(ImageAdapter):
         if data is None:
             data = _call_image(prompt, aspect_ratio="16:9", call_type="image_bg")
             cache.put_bytes("nanobanana_bg", key, data)
-        _save_resized(data, out_path, BG_SIZE, mode="RGB")
+        save_resized(data, out_path, BG_SIZE, mode="RGB")
 
     # -- Characters ------------------------------------------------------
 
@@ -224,10 +164,10 @@ class NanoBananaAdapter(ImageAdapter):
             data = _call_image(prompt, aspect_ratio="9:16", call_type="image_baseline")
             cache.put_bytes("nanobanana_baseline", key, data)
         if self.defer_matte:
-            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=False)
+            save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=False)
             self._matte_later(data, out_path)
         else:
-            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
+            save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
 
     def generate_char(
         self,
@@ -238,7 +178,7 @@ class NanoBananaAdapter(ImageAdapter):
         reference: Path | None = None,
         style_ref_only: bool = False,
     ) -> None:
-        expr_hint = _EXPR_HINTS.get(expr, expr)
+        expr_hint = EXPR_HINTS.get(expr, expr)
         base_desc = description or f"character id '{char_id}'"
         if reference and reference.exists() and not style_ref_only:
             prompt = (
@@ -268,7 +208,7 @@ class NanoBananaAdapter(ImageAdapter):
             )
 
         ref_bytes = reference.read_bytes() if reference and reference.exists() else None
-        ref_hash = _hash_bytes(ref_bytes) if ref_bytes else ""
+        ref_hash = hash_bytes(ref_bytes) if ref_bytes else ""
         key = cache.content_key(
             "nanobanana_char", config.NANO_BANANA_MODEL,
             config.NANO_BANANA_IMAGE_SIZE, prompt, char_id, expr, ref_hash,
@@ -283,7 +223,7 @@ class NanoBananaAdapter(ImageAdapter):
             data = _call_image(contents, aspect_ratio="9:16", call_type="image_char")
             cache.put_bytes("nanobanana_char", key, data)
         if self.defer_matte:
-            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=False)
+            save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=False)
             self._matte_later(data, out_path)
         else:
-            _save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)
+            save_resized(data, out_path, CHAR_SIZE, mode="RGBA", matte=True)

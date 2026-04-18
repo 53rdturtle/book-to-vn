@@ -23,9 +23,13 @@
       <textarea id="src-text" rows="12" placeholder="Paste novel / chapter text..."></textarea>
     </label>
     <label>Image generation
-      <select id="image-gen">
-        <option value="placeholder">placeholder (fast)</option>
-        <option value="nanobanana" selected>nanobanana (real images)</option>
+      <select id="image-gen"></select>
+    </label>
+    <label id="image-quality-label" hidden>Quality
+      <select id="image-quality">
+        <option value="low">low</option>
+        <option value="medium" selected>medium</option>
+        <option value="high">high</option>
       </select>
     </label>
     <label><input type="checkbox" id="no-cache" /> Bypass Gemini timeline cache (force re-call per chapter)</label>

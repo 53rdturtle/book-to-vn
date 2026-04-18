@@ -28,6 +28,17 @@ async def api_health():
     return {"ok": True, "start_time": _START_TIME}
 
 
+@app.get("/api/backends")
+async def api_backends():
+    from pipeline.assets import registry
+    return {
+        "backends": registry.available(),
+        "qualities": ["low", "medium", "high"],
+        "quality_default": config.OPENAI_IMAGE_QUALITY,
+        "quality_backends": ["openai"],
+    }
+
+
 # ---------- helpers ----------
 
 def _resolve_bundle(path_str: str) -> Path:
@@ -113,6 +124,7 @@ async def api_start(req: Request):
     text = body.get("text", "")
     out_dir = _resolve_bundle(body.get("out_dir", ""))
     image_gen = body.get("image_gen", "placeholder")
+    image_quality = body.get("image_quality") or None
     skip_confirm = bool(body.get("skip_confirm", False))
     no_cache = bool(body.get("no_cache", False))
     if not text.strip():
@@ -120,6 +132,7 @@ async def api_start(req: Request):
     if not out_dir:
         raise HTTPException(400, "out_dir is required")
     job = jobs.create(out_dir, text, image_gen,
+                      image_quality=image_quality,
                       skip_confirm=skip_confirm, no_cache=no_cache)
     return {"job_id": job.job_id}
 
@@ -223,9 +236,14 @@ async def api_regenerate(req: Request):
 
     regenerated: list[str] = []
 
-    if kind == "baseline":
+    def _make_adapter():
         style = bg_mod.get_visual_style(bgs) or None
-        adapter = steps._nano_adapter(style=style)
+        backend = bg_mod.get_image_gen(bgs) or "nanobanana"
+        quality = bg_mod.get_image_quality(bgs) or None
+        return steps.image_adapter(backend, style=style, quality=quality)
+
+    if kind == "baseline":
+        adapter = _make_adapter()
         if cascade:
             char_dir = bundle / config.BUNDLE_CHAR_DIR
             if char_dir.exists():
@@ -251,19 +269,19 @@ async def api_regenerate(req: Request):
                     if p.stem != "neutral":
                         p.unlink()
         desc = cast.get("cast", {}).get(cid, {}).get("visual_description", "")
-        p = steps.gen_basic_char(bundle, cid, desc, force=True)
+        p = steps.gen_basic_char(bundle, cid, desc, adapter=_make_adapter(), force=True)
         regenerated.append(str(p))
     elif kind == "char_expr":
         if not cid or not expr:
             raise HTTPException(400, "id and expr required")
         desc = cast.get("cast", {}).get(cid, {}).get("visual_description", "")
-        p = steps.gen_expression(bundle, cid, expr, desc, force=True)
+        p = steps.gen_expression(bundle, cid, expr, desc, adapter=_make_adapter(), force=True)
         regenerated.append(str(p))
     elif kind == "bg":
         if not cid:
             raise HTTPException(400, "id required")
         desc = bg_mod.get_visual_description(bgs, cid)
-        p = steps.gen_bg(bundle, cid, desc, force=True)
+        p = steps.gen_bg(bundle, cid, desc, adapter=_make_adapter(), force=True)
         regenerated.append(str(p))
     else:
         raise HTTPException(400, f"unknown kind: {kind}")

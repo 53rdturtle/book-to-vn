@@ -101,6 +101,7 @@ class PlaceholderAdapter(ImageAdapter):
         description: str,
         out_path: Path,
         reference: Path | None = None,
+        style_ref_only: bool = False,
     ) -> None:
         stype = self._roster.get(char_id, {}).get("silhouette_type")
         if stype and _copy_shared_silhouette(stype, out_path):

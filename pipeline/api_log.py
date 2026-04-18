@@ -15,6 +15,11 @@ _FALLBACK_LOG_DIR = Path(__file__).resolve().parent.parent / "logs" / "prompts"
 _PRICING = {
     "gemini-3-flash-preview": {"input": 0.10, "output": 0.40},
     "gemini-3.1-flash-image-preview": {"input": 0.10, "output": 0.40},
+    # Image tokens: input ~text-rate, output dominated by generated image tokens.
+    # Verify against https://openai.com/api/pricing/ at rollout; adjust if they change.
+    "gpt-image-1-mini": {"input": 2.00, "output": 8.00},
+    "gpt-image-1": {"input": 5.00, "output": 40.00},
+    "gpt-image-1.5": {"input": 5.00, "output": 40.00},
 }
 _DEFAULT_PRICING = {"input": 0.10, "output": 0.40}
 
