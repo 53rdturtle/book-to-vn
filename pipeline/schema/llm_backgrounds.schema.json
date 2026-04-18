@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "VN Pass B — background changes",
-  "description": "Ordered list of background changes, each anchored to the first seg it applies to.",
+  "description": "Ordered list of background changes, each anchored to the first seg it applies to. Each entry carries an inline visual description so Pass B alone determines both naming and appearance.",
   "type": "object",
   "required": ["chapter_id", "backgrounds"],
   "additionalProperties": false,
@@ -12,11 +12,12 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["before_seg_id", "bg_id"],
+        "required": ["before_seg_id", "bg_id", "description"],
         "additionalProperties": false,
         "properties": {
           "before_seg_id": { "type": "string", "pattern": "^ch[0-9]{2,}_seg[0-9]{3,}$" },
-          "bg_id": { "type": "string" }
+          "bg_id": { "type": "string", "pattern": "^bg_[a-z][a-z0-9_]*$" },
+          "description": { "type": "string", "minLength": 1 }
         }
       }
     }

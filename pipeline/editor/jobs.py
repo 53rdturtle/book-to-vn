@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from pipeline import api_log, bundle as bundle_mod, cache, cast as cast_mod, config, steps
+from pipeline import api_log, backgrounds as bg_mod, bundle as bundle_mod, cache, cast as cast_mod, config, steps
 from pipeline.assets.placeholders import PlaceholderAdapter
 from pipeline.build_log import BuildLog
 
@@ -130,7 +130,12 @@ def _run_body(job: Job) -> None:
         ])
 
         _emit(job, "status", message="calling Gemini for timelines")
-        entries, cast = steps.generate_timelines(raw, log=log, no_cache=job.no_cache)
+        initial_backgrounds = bg_mod.load(out_dir)
+        entries, cast, backgrounds = steps.generate_timelines(
+            raw, log=log, no_cache=job.no_cache,
+            initial_backgrounds=initial_backgrounds,
+        )
+        bg_mod.save(out_dir, backgrounds)
 
         # Merge existing on-disk descriptions/names so rerunning against an
         # existing bundle dir preserves prior edits.

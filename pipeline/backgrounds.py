@@ -51,3 +51,16 @@ def get_visual_style(backgrounds: dict) -> str:
 
 def set_visual_style(backgrounds: dict, style: str) -> dict:
     return {**backgrounds, "visual_style": style}
+
+
+def render_known_backgrounds(backgrounds: dict) -> str:
+    """Bullet list of `- bg_id: description` for Pass B cross-chapter reuse."""
+    roster = backgrounds.get("backgrounds", {}) or {}
+    lines = []
+    for bid in sorted(roster):
+        desc = (roster.get(bid, {}) or {}).get("visual_description", "").strip()
+        if desc:
+            lines.append(f"- {bid}: {desc}")
+        else:
+            lines.append(f"- {bid}")
+    return "\n".join(lines) if lines else "None."

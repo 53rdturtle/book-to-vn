@@ -1,19 +1,20 @@
 You are choosing background images for one chapter of prose in a visual novel.
-Your ONLY job in this pass is to decide when the background should change and
-which catalog BG id applies to each segment run. Output MUST be a single JSON
-object that validates against the schema below. Return JSON only — no prose,
-no code fences.
+Your ONLY job in this pass is to decide when the background should change,
+invent or reuse a descriptive bg_id, and write a short visual description.
+Output MUST be a single JSON object that validates against the schema below.
+Return JSON only — no prose, no code fences.
 
 SCHEMA:
 {SCHEMA}
 
-ASSET MANIFEST (you MUST only use ids from this list):
-Backgrounds: {BG_MANIFEST}
+KNOWN BACKGROUNDS (from prior chapters — reuse these ids whenever the scene
+genuinely matches, instead of minting near-duplicates):
+{KNOWN_BACKGROUNDS}
 
 RULES:
 - chapter_id MUST equal "{CHAPTER_ID}".
-- `backgrounds` is an ordered list of (before_seg_id, bg_id) entries. The bg
-  applies starting at that segment and continues until the next entry.
+- `backgrounds` is an ordered list of entries. Each applies starting at its
+  `before_seg_id` and continues until the next entry.
 - The first entry MUST anchor at the very first seg in the SEGMENTS list so
   the chapter has a background from the start.
 - Only emit a new entry when the prose clearly describes a location change
@@ -21,7 +22,14 @@ RULES:
   bg within the same scene.
 - Target 1 to 8 distinct background changes per chapter. If the whole chapter
   stays in one place, a single entry is correct.
-- Every `bg_id` MUST come from the ASSET MANIFEST above. Do NOT invent new ids.
+- `bg_id` MUST match `^bg_[a-z][a-z0-9_]*$`. Be specific and descriptive:
+  prefer `bg_huaguo_waterfall` over `bg_forest`, `bg_subhuti_cave_hall` over
+  `bg_room`. Good ids name the PLACE, not just the type.
+- If a KNOWN BACKGROUND fits the current scene, REUSE its exact bg_id — do not
+  coin a synonym. Only invent a new id when no known background matches.
+- `description` is REQUIRED on every entry: 1–2 sentences, concrete and
+  visual (setting, time of day, lighting, key features). This is fed to the
+  image model. For a reused known bg_id, copy that bg's description verbatim.
 - `before_seg_id` values MUST appear in the SEGMENTS list and MUST be in
   strictly increasing seg order.
 

@@ -42,12 +42,11 @@ class AssetIdError(Exception):
 # ---------- validation helpers ----------
 
 def validate_asset_ids(llm_timeline: dict) -> None:
+    """Catalog-gate BGM/SE ids. BG ids are free-form (minted by Pass B)."""
     unknown: list[str] = []
     for cmd in llm_timeline.get("commands", []):
         t = cmd.get("type")
-        if t == "bg" and cmd["id"] not in asset_catalog.BG_SET:
-            unknown.append(f"bg '{cmd['id']}'")
-        elif t == "bgm_play" and cmd["id"] not in asset_catalog.BGM_SET:
+        if t == "bgm_play" and cmd["id"] not in asset_catalog.BGM_SET:
             unknown.append(f"bgm '{cmd['id']}'")
         elif t == "se" and cmd["id"] not in asset_catalog.SE_SET:
             unknown.append(f"se '{cmd['id']}'")
@@ -132,14 +131,18 @@ def generate_timelines(
     log: BuildLog | None = None,
     no_cache: bool = False,
     initial_cast: dict | None = None,
-) -> tuple[list[bundle.BundleEntry], dict]:
+    initial_backgrounds: dict | None = None,
+) -> tuple[list[bundle.BundleEntry], dict, dict]:
     """Run the three-pass LLM pipeline on each chapter, assemble & expand says,
-    update cast. Returns ``(entries, cast)``.
+    update cast and backgrounds. Returns ``(entries, cast, backgrounds)``.
 
-    `initial_cast` lets callers carry over prior `cast.json` (display names,
-    visual descriptions) across a rebuild.
+    `initial_cast` / `initial_backgrounds` let callers carry over prior
+    ``cast.json`` / ``backgrounds.json`` (display names, visual descriptions)
+    across a rebuild. Pass B can reuse those bg ids when a chapter's scene
+    matches one already established.
     """
     cast = _clone_cast(initial_cast) if initial_cast else {"cast": {}}
+    backgrounds = _clone_backgrounds(initial_backgrounds) if initial_backgrounds else {"backgrounds": {}}
     entries: list[bundle.BundleEntry] = []
 
     for chapter, segs in raw_entries:
@@ -148,6 +151,8 @@ def generate_timelines(
 
         known_cast_text = cast_mod.render_known_cast(cast)
         known_char_ids = set(cast.get("cast", {}).keys())
+        known_backgrounds_text = bg_mod.render_known_backgrounds(backgrounds)
+        known_bg_ids = set(backgrounds.get("backgrounds", {}).keys())
 
         print(f"[pipeline] {chapter.id}: running speakers + backgrounds in parallel, "
               f"then stage (model={config.GEMINI_MODEL})")
@@ -156,6 +161,8 @@ def generate_timelines(
             chapter.id, chapter.title, segs,
             known_cast_text=known_cast_text,
             known_char_ids=known_char_ids,
+            known_backgrounds_text=known_backgrounds_text,
+            known_bg_ids=known_bg_ids,
             no_cache=no_cache,
         )
         elapsed = time.time() - t0
@@ -176,14 +183,24 @@ def generate_timelines(
         cast = cast_mod.update_from_timeline(cast, timeline, chapter.id)
         for cid, name in result.new_display_names.items():
             cast = cast_mod.set_display_name(cast, cid, name)
+        for bid, desc in result.new_bg_descriptions.items():
+            backgrounds = bg_mod.set_visual_description(backgrounds, bid, desc)
         if log:
             log.cast_snapshot(chapter.id, cast)
-    return entries, cast
+    return entries, cast, backgrounds
 
 
 def _clone_cast(src: dict) -> dict:
     roster = src.get("cast", {}) or {}
     return {"cast": {cid: dict(meta) for cid, meta in roster.items()}}
+
+
+def _clone_backgrounds(src: dict) -> dict:
+    roster = src.get("backgrounds", {}) or {}
+    out = {"backgrounds": {bid: dict(meta) for bid, meta in roster.items()}}
+    if src.get("visual_style"):
+        out["visual_style"] = src["visual_style"]
+    return out
 
 
 # ---------- manifests / major chars ----------

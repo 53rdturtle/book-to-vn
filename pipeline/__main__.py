@@ -255,18 +255,22 @@ def _cmd_build(args: argparse.Namespace) -> None:
             carried["display_name"] = meta["display_name"]
         if carried:
             initial_cast["cast"][cid] = carried
+    initial_backgrounds = bg_mod.load(out_dir)
     log = BuildLog(out_dir)
 
     total_segs = sum(len(segs) for _ch, segs in raw_entries)
     for chapter, segs in raw_entries:
         print(f"[pipeline] {chapter.id}: {len(segs)} segments")
 
-    entries, cast = steps.generate_timelines(
+    entries, cast, backgrounds = steps.generate_timelines(
         raw_entries,
         log=log,
         no_cache=args.no_cache,
         initial_cast=initial_cast,
+        initial_backgrounds=initial_backgrounds,
     )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    bg_mod.save(out_dir, backgrounds)
 
     # Derive book title from the first chapter's first non-heading line for
     # multi-chapter inputs; single-chapter inputs keep the chapter title.

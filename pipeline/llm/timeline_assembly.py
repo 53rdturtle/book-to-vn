@@ -17,7 +17,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from pipeline import asset_catalog, cache, config
+from pipeline import cache, config
 from pipeline.llm import gemini_client
 from pipeline.segmenter import Segment
 
@@ -38,6 +38,7 @@ class PassLog:
 class AssemblyResult:
     llm_timeline: dict
     new_display_names: dict[str, str]
+    new_bg_descriptions: dict[str, str] = field(default_factory=dict)
     passes: list[PassLog] = field(default_factory=list)
 
 
@@ -80,14 +81,6 @@ def _render_speaker_lines(segments: list[Segment], speakers: list[dict]) -> str:
         spk = by_id.get(s.seg_id, "narrator")
         out.append(f"- {s.seg_id} [{spk}]: {s.text}")
     return "\n".join(out)
-
-
-def _validate_bg_ids(bgs: dict) -> list[str]:
-    unknown: list[str] = []
-    for entry in bgs.get("backgrounds", []):
-        if entry["bg_id"] not in asset_catalog.BG_SET:
-            unknown.append(entry["bg_id"])
-    return unknown
 
 
 def _check_speakers_cover_all(
@@ -174,6 +167,8 @@ def assemble_timeline(
     segments: list[Segment],
     known_cast_text: str,
     known_char_ids: set[str],
+    known_backgrounds_text: str = "None.",
+    known_bg_ids: set[str] | None = None,
     *,
     no_cache: bool = False,
 ) -> AssemblyResult:
@@ -182,7 +177,14 @@ def assemble_timeline(
     `known_char_ids` is the set of character IDs already established in prior
     chapters' cast (excluding "narrator"). Used to decide which speaker ids
     must be declared as new in Pass A.
+
+    `known_backgrounds_text` is a bullet list of `bg_id: description` pairs
+    from prior chapters; Pass B is told to reuse those ids when the scene
+    matches. `known_bg_ids` is the matching set used to split Pass B output
+    into "new" vs "reused" descriptions — only new ones get saved as fresh
+    visual descriptions (reused ids keep whatever the user previously edited).
     """
+    known_bg_ids = known_bg_ids or set()
     seg_sig = _segments_signature(segments)
 
     speakers_prompt_tpl = config.SPEAKERS_PROMPT_PATH.read_text(encoding="utf-8")
@@ -201,7 +203,7 @@ def assemble_timeline(
         "backgrounds",
         bgs_prompt_tpl, bgs_schema_text,
         chapter_id, chapter_title, seg_sig,
-        asset_catalog.BG_IDS,
+        known_backgrounds_text,
     )
 
     def run_speakers() -> tuple[dict, str, bool]:
@@ -223,25 +225,16 @@ def assemble_timeline(
             cached = cache.get("gemini_backgrounds", bgs_key)
             if cached is not None:
                 prompt = gemini_client._render_backgrounds_prompt(
-                    chapter_id, chapter_title, segments
+                    chapter_id, chapter_title, segments, known_backgrounds_text
                 )
                 return cached, prompt, True
-        for attempt in range(2):
-            resp, prompt = gemini_client.generate_backgrounds(
-                chapter_id, chapter_title, segments
-            )
-            _validate(resp, config.LLM_BACKGROUNDS_SCHEMA_PATH,
-                      f"backgrounds output for {chapter_id}")
-            unknown = _validate_bg_ids(resp)
-            if not unknown:
-                cache.put("gemini_backgrounds", bgs_key, resp)
-                return resp, prompt, False
-            if attempt == 1:
-                raise AssemblyError(
-                    f"backgrounds pass returned unknown bg_ids after retry: {unknown}"
-                )
-            print(f"[pipeline] {chapter_id}: unknown bg_ids {unknown} — retrying")
-        raise AssemblyError("unreachable")
+        resp, prompt = gemini_client.generate_backgrounds(
+            chapter_id, chapter_title, segments, known_backgrounds_text
+        )
+        _validate(resp, config.LLM_BACKGROUNDS_SCHEMA_PATH,
+                  f"backgrounds output for {chapter_id}")
+        cache.put("gemini_backgrounds", bgs_key, resp)
+        return resp, prompt, False
 
     # A + B in parallel
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -254,16 +247,9 @@ def assemble_timeline(
               f"speakers output for {chapter_id}")
     _check_speakers_cover_all(speakers_resp, segments, known_char_ids)
 
-    # Ensure backgrounds were validated above (only when freshly generated).
-    # When loaded from cache we still need to validate.
     if bgs_hit:
         _validate(bgs_resp, config.LLM_BACKGROUNDS_SCHEMA_PATH,
                   f"cached backgrounds output for {chapter_id}")
-        unknown = _validate_bg_ids(bgs_resp)
-        if unknown:
-            raise AssemblyError(
-                f"cached backgrounds output has unknown bg_ids: {unknown}"
-            )
 
     # Pass C runs after A — needs the chapter's full cast + per-seg speakers.
     new_characters = speakers_resp.get("new_characters", [])
@@ -309,9 +295,22 @@ def assemble_timeline(
         if e.get("display_name")
     }
 
+    # First-seen description per bg_id in Pass B output, filtered to ids
+    # genuinely new to this build (not in known_bg_ids). Reused ids keep
+    # whatever description is already on disk.
+    new_bg_descriptions: dict[str, str] = {}
+    for entry in bgs_resp.get("backgrounds", []):
+        bid = entry["bg_id"]
+        if bid in known_bg_ids or bid in new_bg_descriptions:
+            continue
+        desc = (entry.get("description") or "").strip()
+        if desc:
+            new_bg_descriptions[bid] = desc
+
     return AssemblyResult(
         llm_timeline=llm_timeline,
         new_display_names=new_display_names,
+        new_bg_descriptions=new_bg_descriptions,
         passes=[
             PassLog("speakers", speakers_prompt, speakers_resp, speakers_hit),
             PassLog("backgrounds", bgs_prompt, bgs_resp, bgs_hit),

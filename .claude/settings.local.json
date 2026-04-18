@@ -23,7 +23,14 @@
       "WebFetch(domain:arxiv.org)",
       "WebFetch(domain:github.com)",
       "Bash(pip install:*)",
-      "Bash(yes \"\")"
+      "Bash(yes \"\")",
+      "Bash(mkdir -p \"C:/Users/wssrd/Code/book-to-vn/pipeline/assets/shared_pool\")",
+      "Bash(cp \"C:/Users/wssrd/Code/book-to-vn/out/shared/\"*.png \"C:/Users/wssrd/Code/book-to-vn/pipeline/assets/shared_pool/\")",
+      "Bash(ls -d /c/Users/wssrd/Code/book-to-vn/out/*/)",
+      "Bash(timeout 8 \"/c/Users/wssrd/OneDrive/Desktop/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe\" --path \"/c/Users/wssrd/Code/book-to-vn/godot_player\" -- --bundle \"/c/Users/wssrd/Code/book-to-vn/out/multi_en\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8765/api/shutdown -m 5)",
+      "Bash(curl -s -X POST http://127.0.0.1:8765/api/restart -m 5)",
+      "Bash(curl -s http://127.0.0.1:8765/api/health -m 5)"
     ]
   }
 }

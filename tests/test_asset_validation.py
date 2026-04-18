@@ -19,10 +19,10 @@ class TestAssetIdValidation:
         ])
         _validate_asset_ids(tl)
 
-    def test_unknown_bg_raises(self):
+    def test_bg_ids_are_free_form(self):
+        # Pass B mints bg_ids (e.g. bg_huaguo_waterfall); they're not catalog-gated.
         tl = _timeline_with([{"type": "bg", "id": "bg_invented_place"}])
-        with pytest.raises(AssetIdError, match="bg 'bg_invented_place'"):
-            _validate_asset_ids(tl)
+        _validate_asset_ids(tl)
 
     def test_unknown_bgm_raises(self):
         tl = _timeline_with([{"type": "bgm_play", "id": "bgm_unknown"}])
@@ -43,10 +43,10 @@ class TestAssetIdValidation:
 
     def test_multiple_unknown_collected(self):
         tl = _timeline_with([
-            {"type": "bg", "id": "bg_bad"},
+            {"type": "bgm_play", "id": "bgm_bad"},
             {"type": "se", "id": "se_bad"},
         ])
-        with pytest.raises(AssetIdError, match="bg 'bg_bad'.*se 'se_bad'"):
+        with pytest.raises(AssetIdError, match="bgm 'bgm_bad'.*se 'se_bad'"):
             _validate_asset_ids(tl)
 
     def test_empty_timeline_passes(self):

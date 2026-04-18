@@ -3,7 +3,7 @@ import time
 
 from jsonschema import Draft202012Validator
 
-from pipeline import api_log, asset_catalog, config
+from pipeline import api_log, config
 from pipeline.chapters import Chapter
 from pipeline.segmenter import Segment
 
@@ -37,6 +37,7 @@ def _render_backgrounds_prompt(
     chapter_id: str,
     chapter_title: str,
     segments: list[Segment],
+    known_backgrounds_text: str,
 ) -> str:
     schema_text = config.LLM_BACKGROUNDS_SCHEMA_PATH.read_text(encoding="utf-8")
     template = config.BACKGROUNDS_PROMPT_PATH.read_text(encoding="utf-8")
@@ -45,7 +46,7 @@ def _render_backgrounds_prompt(
         .replace("{CHAPTER_ID}", chapter_id)
         .replace("{CHAPTER_TITLE}", chapter_title)
         .replace("{SEGMENTS}", _seg_lines(segments))
-        .replace("{BG_MANIFEST}", ", ".join(asset_catalog.BG_IDS))
+        .replace("{KNOWN_BACKGROUNDS}", known_backgrounds_text)
     )
 
 
@@ -148,12 +149,19 @@ def generate_backgrounds(
     chapter_id: str,
     chapter_title: str,
     segments: list[Segment],
+    known_backgrounds_text: str = "None.",
 ) -> tuple[dict, str]:
-    """Pass B: anchored BG changes through the chapter.
+    """Pass B: anchored BG changes + free-form id + inline description.
+
+    `known_backgrounds_text` is a bullet list of `bg_id: description` pairs
+    already established by prior chapters; Gemini is instructed to reuse those
+    ids when the scene matches, and mint new descriptive ids otherwise.
 
     Returns (llm_backgrounds, rendered_prompt).
     """
-    prompt = _render_backgrounds_prompt(chapter_id, chapter_title, segments)
+    prompt = _render_backgrounds_prompt(
+        chapter_id, chapter_title, segments, known_backgrounds_text
+    )
     return _call_gemini_json(prompt, call_type="backgrounds"), prompt
 
 

@@ -32,6 +32,7 @@ Visual novel playback
 - **Caching:** content-hash keyed cache per build, stored at `<out_dir>/cache/`. Deleting the output directory triggers full regeneration. Overridable at runtime via `cache.set_dir(path)`.
 - **Diagnostics:** per-call prompt/response dumps to `<out_dir>/logs/calls/`, block reasons logged on failure.
 - **Character state:** persistent `cast.json` deferred to M2. M1 has no cross-chapter memory.
+- **Background ID discipline (M2→M3):** originally fixed catalog (`bg_forest_day`, `bg_mountain`). Now (M3+) free-form descriptive IDs minted by Pass B (`bg_huaguo_waterfall`, `bg_subhuti_cave_hall`). Pass B includes inline visual descriptions (1–2 sentences) in its output, eliminating a separate description proposal step. Pass B is fed prior chapters' bg_ids + descriptions so it can reuse IDs when scenes recur (cost savings, visual continuity). New BG ids and descriptions are written to `backgrounds.json` during timeline generation; reused ids keep whatever description the user previously edited.
 
 ## File Structure
 
@@ -233,14 +234,14 @@ bundle/
 
 - **Chapter splitter scale limit:** Heuristics handle well-formatted books cleanly. The Gemini fallback embeds the entire text as numbered lines in the prompt, so inputs beyond ~30k characters may exceed context comfortably. Windowed splitting is a stub — revisit in M5+.
 - **Silent TTS stubs:** Voice clips are silent OGGs scaled by text length. Real TTS (M5) behind adapter interface.
-- **Static asset catalog:** `asset_catalog.py` has a fixed set of bg/bgm/se IDs. Future milestones can make this context-dependent (genre, setting).
+- **BGM/SE asset catalog:** `asset_catalog.py` has a fixed set of bgm/se IDs. Future milestones can make this context-dependent (genre, setting). Background IDs (Pass B) are now free-form and minted by Gemini.
 - **No inline effects:** `say` commands don't support word-level styling (bold, color, shake). Future milestone adds optional `fx` array with word-offset spans.
 
 ## Milestones
 
 - **M1 (done):** Skeleton + playable thin slice. Single chapter, placeholder assets, silent TTS, Gemini 3-Flash timeline generation.
 - **M2 (done):** Multi-chapter ingestion with Chinese/English heuristic splitter + Gemini fallback. SHA-256 content-hash cache per-build at `<out_dir>/cache/` so deleting output triggers regeneration. Persistent `cast.json` threaded into the timeline prompt so character IDs stay stable across chapters.
-- **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). Asset-ID discipline via `asset_catalog.py` + post-LLM validation with retry. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (30 tests via pytest).
+- **M3 (done):** Prompt quality & coherence (slot stability, scene-change, BGM discipline, narrator rules). **Three-pass LLM decomposition:** Pass A (speaker attribution) + Pass B (background selection + free-form descriptive ID + inline description) run in parallel; Pass C (character expressions) runs after A. Per-pass caching + independent validation. Expression enum locked (7 values). CJK-aware segmenter (25–70 chars). Golden-file tests (39 tests via pytest). Free-form BG IDs with cross-chapter reuse via `known_backgrounds_text`.
 - **M4 (done):** Real image generation via Nano Banana 2 (Gemini 3.1 Flash Image). ImageAdapter interface (PlaceholderAdapter + NanoBananaAdapter). LLM-driven visual descriptions (character/background). 3-phase character reference pipeline (baseline → basic → expressions). Major character filtering (≥10 appearances). Binary image caching. `--image-gen nanobanana` CLI flag with interactive description editing. **Minor character silhouette pool:** Characters < 10 appearances are classified by LLM (gender/age: adult/young/elder × male/female) and assigned pre-matted silhouettes from `pipeline/assets/shared_pool/`. **Assets editor (M4.5):** Web UI (`python -m pipeline editor`) for step-by-step builds with in-browser confirmation, inline description editing, per-asset regeneration with cascade, manual image upload overrides, and integrated Godot playback.
 - **M5 (next):** Real TTS. Per-character voice assignment.
 - **M6:** BGM/SE library. Mood-based selection.
