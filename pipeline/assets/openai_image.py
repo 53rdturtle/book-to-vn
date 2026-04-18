@@ -2,9 +2,10 @@
 
 Uses the Images API:
 - `client.images.generate` for baseline + backgrounds (text → image).
-- `client.images.edit` with `input_fidelity="high"` for reference-guided
-  character generation (Phase B basic chars from the baseline, Phase C
-  expression variants from the neutral character).
+- `client.images.edit` for reference-guided character generation (Phase B
+  basic chars from the baseline, Phase C expression variants from the
+  neutral character). `input_fidelity="high"` is added only for the full
+  `gpt-image-1` model; the `-mini` variant does not support that param.
 
 Quality is selectable per build (`low`/`medium`/`high`/`auto`), trading cost
 for fidelity.
@@ -113,15 +114,19 @@ def _call_edit(
                 ("image.png", io.BytesIO(b), "image/png") for b in ref_bytes_list
             ]
             t0 = time.time()
-            result = client.images.edit(
+            edit_kwargs = dict(
                 model=model,
                 image=image_arg if len(image_arg) > 1 else image_arg[0],
                 prompt=prompt,
                 size=size,
                 quality=quality,
-                input_fidelity="high",
                 n=1,
             )
+            # input_fidelity is only supported on the full gpt-image-1 model,
+            # not on gpt-image-1-mini.
+            if "mini" not in model:
+                edit_kwargs["input_fidelity"] = "high"
+            result = client.images.edit(**edit_kwargs)
             elapsed = time.time() - t0
             img_bytes = _decode_b64(result)
             in_tok, out_tok = _usage_tokens(getattr(result, "usage", None))
